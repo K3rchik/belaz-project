@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
 import psycopg2
-<<<<<<< HEAD
 import os  # Библиотека для работы с системой
 from dotenv import load_dotenv # Библиотека для секретов
-=======
->>>>>>> 7d9eabe7b98ef58f50da6d8dccb96f7fa76ec41e
 import time
 import math
 import random
 from datetime import datetime
 
-<<<<<<< HEAD
 # 1. Загружаем данные из файла .env
 load_dotenv()
 
@@ -23,10 +19,6 @@ DB_CONFIG = {
     "port": "5432"
 }
 
-=======
-# Настройки БД (Твой IP малинки)
-DB_CONFIG = {"host": "10.227.43.86", "database": "belaz_db", "user": "admin", "password": "K3rchikk", "port": "5432"}
->>>>>>> 7d9eabe7b98ef58f50da6d8dccb96f7fa76ec41e
 
 # Координаты
 POINT_A = {"lat": 67.548, "lon": 33.395} # Погрузка
@@ -74,15 +66,10 @@ class BelazSim:
         # 1. Логика заправки
         if self.fuel_level <= 100.0 and self.state == "GOING_TO_LOAD":
             self.state = "GOING_TO_REFUEL"
-<<<<<<< HEAD
-=======
-            self.incline = 3.0 # Небольшой подъем к заправке
->>>>>>> 7d9eabe7b98ef58f50da6d8dccb96f7fa76ec41e
 
         # 2. Машина состояний
         if self.state == "GOING_TO_REFUEL":
             self.move_towards(POINT_C, speed=35.0)
-<<<<<<< HEAD
             self.incline = 3.0 # Небольшой подъем к заправке
             if self.at_destination(POINT_C):
                 self.state = "REFUELING"
@@ -90,23 +77,10 @@ class BelazSim:
         elif self.state == "REFUELING":
             self.speed = 0.0
             self.incline = 0.0
-=======
-            if self.at_destination(POINT_C):
-                self.state = "REFUELING"
-                self.incline = 0.0 
-                self.speed = 0.0
-
-        elif self.state == "REFUELING":
->>>>>>> 7d9eabe7b98ef58f50da6d8dccb96f7fa76ec41e
             self.fuel_level += 60.0 
             if self.fuel_level >= 1000.0:
                 self.fuel_level = 1000.0
                 self.state = "GOING_TO_LOAD"
-<<<<<<< HEAD
-=======
-                self.incline = 13.0
-                
->>>>>>> 7d9eabe7b98ef58f50da6d8dccb96f7fa76ec41e
 
         elif self.state == "GOING_TO_LOAD":
             self.move_towards(POINT_A, speed=38.0)
@@ -187,16 +161,11 @@ def start_sim():
     except Exception as e:
         print(f"Error: {e}")
     finally:
-<<<<<<< HEAD
         if cur is not None:
             cur.close()
         if conn is not None:
             conn.close()
         print("Соединение с базой закрыто.")
-=======
-        cur.close()
-        conn.close()
->>>>>>> 7d9eabe7b98ef58f50da6d8dccb96f7fa76ec41e
 
 if __name__ == "__main__":
     start_sim()
