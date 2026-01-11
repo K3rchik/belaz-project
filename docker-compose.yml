@@ -1,0 +1,23 @@
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: belaz_db
+    restart: always
+    environment:
+      - POSTGRES_DB=belaz_db
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=K3rchikk
+    volumes:
+      - /mnt/ssd/postgres_data:/var/lib/posgresql/data
+    ports:
+      - "5432:5432"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: belaz_pgadmin
+    restart: always
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=gorbovskihkirill@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=K3rchikk
+    ports:
+      - "8080:80"
