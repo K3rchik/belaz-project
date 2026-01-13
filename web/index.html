@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Дашборд БелАЗ</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f4f4f4; }
+        .card { background: white; padding: 20px; border-radius: 10px; display: inline-block; margin-top: 50px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        #health-value { font-size: 48px; color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Состояние БелАЗа №1</h1>
+        <div id="health-value">Загрузка...</div>
+        <p>Индекс здоровья (остаточный ресурс)</p>
+    </div>
+
+    <script>
+        // Функция для обновления данных с сервера
+        async function updateStatus() {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            document.getElementById('health-value').innerText = data.health_index.toFixed(2) + '%';
+        }
+
+        // Обновлять каждые 5 секунд
+        setInterval(updateStatus, 5000);
+        updateStatus();
+    </script>
+</body>
+</html>
