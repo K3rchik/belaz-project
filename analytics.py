@@ -1,70 +1,80 @@
+# -*- coding: utf-8 -*-
 import psycopg2
-import time
-from datetime import datetime
+import math
+import os
+from dotenv import load_dotenv
 
-DB_CONFIG = {
-    "host": "localhost",
-    "database": "belaz_db",
-    "user": "admin",
-    "password": "K3rchikk",
-    "port": "5432"
-}
+load_dotenv()
 
-# Константы надежности
-TOTAL_RESOURCE_HOURS = 20000 
-# Сколько % ресурса потребляется за 1 секунду в идеальных условиях
-BASE_WEAR_PER_SEC = (100.0 / (TOTAL_RESOURCE_HOURS * 3600))
+def calculate_reliability():
+    conn = psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
+    )
+    cur = conn.cursor()
 
-def get_wear_coefficient(temp):
-    if temp is None: return 1.0
-    if temp > 102: return 10.0  # Критический износ
-    if temp > 95:  return 2.0   # Ускоренный износ
-    return 1.0                  # Норма
+    # 1. Получаем коэффициенты из базы
+    cur.execute("SELECT parameter_name, coefficient FROM model_coefficients")
+    coeffs = dict(cur.fetchall())
 
-def run_analytics():
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
-        print("Analytical Module (Reliability) started...")
+    # 2. Получаем последние данные датчиков
+    # (Для примера берем последние значения, в идеале - средние за минуту)
+    cur.execute("""
+        SELECT parameter_name, value FROM telemetry 
+        WHERE time > now() - interval '1 minute'
+    """)
+    sensors = dict(cur.fetchall())
 
-        while True:
-            # 1. Считаем среднюю температуру за последние 10 минут
-            cur.execute("""
-                SELECT AVG(value) FROM telemetry 
-                WHERE parameter_name = 'engine_temp' 
-                AND time > now() - interval '10 minutes';
-            """)
-            avg_temp = cur.fetchone()[0]
+    if sensors:
+        # 3. Нормализация (Метод Мин-Макс из файла Тимура)
+        # x_norm = (x - min) / (max - min)
+        # Здесь используем упрощенные границы из таблицы норм Виктории
+        x1 = (sensors.get('engine_temp', 90) - 80) / (115 - 80)
+        x2 = (sensors.get('oil_pressure', 400) - 170) / (550 - 170)
+        x4 = (sensors.get('rpm', 1000) - 600) / (2100 - 600)
+        
+        # 4. Расчет по формуле: λ = λ0 * exp(a1x1 + a2x2 + ...)
+        # λ0 (базовый риск) возьмем из файла = 0.000055
+        lambda_0 = 0.000055
+        exponent = (coeffs['engine_temp'] * x1) + (coeffs['oil_pressure'] * x2) + (coeffs['rpm'] * x4)
+        
+        failure_rate = lambda_0 * math.exp(exponent)
 
-            if avg_temp:
-                # 2. Получаем коэффициент износа
-                k_factor = get_wear_coefficient(avg_temp)
-                
-                # 3. Рассчитываем, сколько % ресурса "съедено" за этот цикл (например, за 60 сек)
-                # Износ = Базовый_износ * Время * Коэффициент
-                actual_wear = BASE_WEAR_PER_SEC * 60 * k_factor
+        cur.execute("""
+            UPDATE component_health 
+            SET failure_probability = %s, 
+                last_update = now()
+            WHERE component_name = 'Engine System'
+        """, (min(failure_rate, 1.0),))
+        
+        # ДОБАВЬ ЭТУ СТРОКУ ДЛЯ ПРОВЕРКИ:
+        print(f"DEBUG: Попытка обновить 'Engine System'. Результат: {cur.rowcount} строк изменено.")
+        
+        conn.commit()
+        
+        # 5. Обновляем вероятность отказа в базе
+        cur.execute("""
+            UPDATE component_health 
+            SET failure_probability = %s, 
+                last_update = now()
+            WHERE component_name = 'Engine System'
+        """, (min(failure_rate, 1.0),)) # Вероятность не выше 100%
+        
+        conn.commit()
+        print(f"Расчет окончен. Текущий риск отказа: {failure_rate:.6f}")
 
-                # 4. Обновляем таблицу здоровья
-                cur.execute("""
-                    UPDATE component_health 
-                    SET health_index = health_index - %s, 
-                        last_update = now()
-                    WHERE truck_id = 1 AND component_name = 'Engine System';
-                """, (actual_wear,))
-                
-                conn.commit()
-                print(f"[{datetime.now().strftime('%H:%M')}] Avg Temp: {avg_temp:.1f}C | K: {k_factor} | Wear Applied: {actual_wear:.6f}%")
-            else:
-                print("No new telemetry data found...")
-
-            time.sleep(60) # Расчет каждую минуту
-
-    except Exception as e:
-        print(f"Analytics Error: {e}")
-    finally:
-        if conn:
-            cur.close()
-            conn.close()
+    cur.close()
+    conn.close()
 
 if __name__ == "__main__":
-    run_analytics()
+    print("Smart Analytics Engine started...")
+    while True:
+        try:
+            calculate_reliability()
+        except Exception as e:
+            print(f"Ошибка в цикле: {e}")
+        
+        import time
+        time.sleep(30) # Считать риск каждые 30 секунд
