@@ -1,171 +1,106 @@
 # -*- coding: utf-8 -*-
 import psycopg2
-import os  # Библиотека для работы с системой
-from dotenv import load_dotenv # Библиотека для секретов
 import time
-import math
-import random
+import os
 from datetime import datetime
+from dotenv import load_dotenv
 
-# 1. Загружаем данные из файла .env
+from belaz_model import BelazSim
+
 load_dotenv()
 
-# 2. Берем переменные из окружения
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST"),
-    "database": os.getenv("DB_NAME"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "port": "5432"
+# Константы маршрута
+POINTS = {
+    "LOAD": {"lat": 67.548, "lon": 33.395},
+    "DUMP": {"lat": 67.562, "lon": 33.412},
+    "FUEL": {"lat": 67.574, "lon": 33.430}
 }
 
-
-# Координаты
-POINT_A = {"lat": 67.548, "lon": 33.395} # Погрузка
-POINT_B = {"lat": 67.562, "lon": 33.412} # Разгрузка
-POINT_C = {"lat": 67.574, "lon": 33.430} # Заправка
-
-class BelazSim:
-    def __init__(self):
-        self.truck_id = 1
-        self.state = "GOING_TO_LOAD"
-        self.lat = POINT_B["lat"]
-        self.lon = POINT_B["lon"]
-        self.payload = 0.0
-        self.fuel_level = 1000.0
-        self.speed = 0.0
-        self.oil_pressure = 4.5
-        self.temp = 85.0
-        self.incline = 0.0 
-        self.fuel_rate = 0.0 
-    
-    def calculate_fuel_consumption(self):
-        """Математическая модель расхода топлива"""
-        base_idle = 20.0  # л/час на холостом ходу
-        
-        # Если машина стоит и не заправляется
-        if self.speed == 0 and self.state != "REFUELING":
-            self.fuel_rate = base_idle
-            return self.fuel_rate
-
-        # Влияние скорости и веса
-        work_factor = (self.speed * 1.2) + (self.payload * 0.5)
-        
-        # Влияние уклона через СИНУС (работа против гравитации)
-        # math.sin(math.radians(self.incline)) даст нам % подъема
-        # Добавляем множитель 10, чтобы уклон реально "бил" по баку
-        incline_effect = math.sin(math.radians(self.incline)) * 10.0
-        
-        # Итоговый коэффициент нагрузки (не может быть меньше 0.1 при спуске)
-        load_multiplier = max(0.1, 1.0 + incline_effect)
-
-        self.fuel_rate = base_idle + (work_factor * load_multiplier)
-        return self.fuel_rate
-
-    def update(self, interval_sec):
-        # 1. Логика заправки
-        if self.fuel_level <= 100.0 and self.state == "GOING_TO_LOAD":
-            self.state = "GOING_TO_REFUEL"
-
-        # 2. Машина состояний
-        if self.state == "GOING_TO_REFUEL":
-            self.move_towards(POINT_C, speed=35.0)
-            self.incline = 3.0 # Небольшой подъем к заправке
-            if self.at_destination(POINT_C):
-                self.state = "REFUELING"
-
-        elif self.state == "REFUELING":
-            self.speed = 0.0
-            self.incline = 0.0
-            self.fuel_level += 60.0 
-            if self.fuel_level >= 1000.0:
-                self.fuel_level = 1000.0
-                self.state = "GOING_TO_LOAD"
-
-        elif self.state == "GOING_TO_LOAD":
-            self.move_towards(POINT_A, speed=38.0)
-            self.incline = -5.0 # Спуск в карьер
-            if self.at_destination(POINT_A):
-                self.state = "LOADING"
-
-        elif self.state == "LOADING":
-            self.speed = 0.0
-            self.incline = 0.0
-            self.payload += 30.0
-            if self.payload >= 90.0:
-                self.state = "GOING_TO_DUMP"
-
-        elif self.state == "GOING_TO_DUMP":
-            self.move_towards(POINT_B, speed=22.0)
-            self.incline = 12.0 # Тяжелый подъем из карьера
-            if self.at_destination(POINT_B):
-                self.state = "UNLOADING"
-
-        elif self.state == "UNLOADING":
-            self.speed = 0.0
-            self.incline = 0.0
-            self.payload -= 45.0
-            if self.payload <= 0:
-                self.state = "GOING_TO_LOAD"
-
-        # 3. Расчет расхода и списание топлива
-        if self.state != "REFUELING":
-            rate = self.calculate_fuel_consumption()
-            consumed = (rate / 3600) * interval_sec
-            self.fuel_level -= consumed
-            
-        # Имитация температуры (растет при нагрузке)
-        self.temp = 80 + (self.fuel_rate / 5) + random.uniform(-1, 1)
-
-    def move_towards(self, target, speed):
-        self.speed = speed
-        step = 0.001 
-        if self.lat < target["lat"]: self.lat += step
-        else: self.lat -= step
-        if self.lon < target["lon"]: self.lon += step
-        else: self.lon -= step
-
-    def at_destination(self, target):
-        return abs(self.lat - target["lat"]) < 0.003 and abs(self.lon - target["lon"]) < 0.003
-
 def start_sim():
-    truck = BelazSim()
+    # Создаем объект БелАЗа
+    truck = BelazSim(truck_id=1)
     interval = 2
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
-        print("ASD Simulator started on PC...")
+    
+    conn = psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
+    )
+    cur = conn.cursor()
 
+    try:
+        print("Система запущена.")
         while True:
-            truck.update(interval)
-            now = datetime.now()
+            # --- ЛОГИКА СОСТОЯНИЙ (теперь управляется здесь) ---
+            if truck.fuel_level <= 100.0 and truck.state == "GOING_TO_LOAD":
+                truck.state = "GOING_TO_REFUEL"
+
+            if truck.state == "GOING_TO_REFUEL":
+                truck.update_position(POINTS["FUEL"], speed=35.0)
+                truck.incline = 3.0
+                if truck.is_at(POINTS["FUEL"]): truck.state = "REFUELING"
+
+            elif truck.state == "REFUELING":
+                truck.speed, truck.incline = 0.0, 0.0
+                truck.fuel_level += 60.0
+                if truck.fuel_level >= truck.fuel_capacity: 
+                    truck.state = "GOING_TO_LOAD"
+                    truck.fuel_level = truck.fuel_capacity
+
+            elif truck.state == "GOING_TO_LOAD":
+                truck.update_position(POINTS["LOAD"], speed = 40)
+                truck.incline = -5.0
+                if truck.is_at(POINTS["LOAD"]): truck.state = "LOADING"
+
+            elif truck.state == "LOADING":
+                truck.speed, truck.incline = 0.0, 0.0
+                truck.payload += 30.0
+                if truck.payload >= 90.0: truck.state = "GOING_TO_DUMP"
+
+            elif truck.state == "GOING_TO_DUMP":
+                truck.update_position(POINTS["DUMP"], speed = 15)
+                truck.incline = -10.0
+                if truck.is_at(POINTS["DUMP"]): truck.state = "UNLOADING"
+
+            elif truck.state == "UNLOADING":
+                truck.speed, truck.incline = 0.0, 0.0
+                truck.payload -= 45.0
+                if truck.payload <= 0: truck.state = "GOING_TO_LOAD"
+
+            # --- РАСЧЕТ ФИЗИКИ И ЗАПИСЬ ---
+            rate = truck.calculate_fuel_consumption()
+            if truck.state != "REFUELING":
+                truck.fuel_level -= (rate / 3600) * interval
             
+            truck.temp = 80 + (rate / 5) # Имитация нагрева
+            truck.update_sensors()
+
+            # Запись в БД
+            now = datetime.now()
             params = [
-                (now, truck.truck_id, 'latitude', truck.lat),
-                (now, truck.truck_id, 'longitude', truck.lon),
                 (now, truck.truck_id, 'speed', truck.speed),
                 (now, truck.truck_id, 'payload', truck.payload),
                 (now, truck.truck_id, 'fuel_level', truck.fuel_level),
                 (now, truck.truck_id, 'engine_temp', truck.temp),
-                (now, truck.truck_id, 'fuel_rate', truck.fuel_rate),
-                (now, truck.truck_id, 'incline', truck.incline)
+                (now, truck.truck_id, 'voltage', truck.voltage),
+                (now, truck.truck_id, 'coolant_level', truck.cooling_level),
+                (now, truck.truck_id, 'hydraulic_level', truck.hydraulic_level),
+                (now, truck.truck_id, 'wheel_press_rf', truck.wheel_pressure_rf),
+                (now, truck.truck_id, 'wheel_press_lf', truck.wheel_pressure_lf),
+                (now, truck.truck_id, 'wheel_press_rb', truck.wheel_pressure_rb),
+                (now, truck.truck_id, 'wheel_press_lb', truck.wheel_pressure_lb),
             ]
-            
             for p in params:
                 cur.execute("INSERT INTO telemetry (time, truck_id, parameter_name, value) VALUES (%s, %s, %s, %s)", p)
             
             conn.commit()
-            print(f"[{truck.state}] Fuel: {truck.fuel_level:.1f}L, Rate: {truck.fuel_rate:.1f}L/h, Incline: {truck.incline}°")
+            print(f"[{truck.state}] Топливо: {truck.fuel_level:.1f} л. Расход: {rate:.1f} л/ч")
             time.sleep(interval)
 
-    except Exception as e:
-        print(f"Error: {e}")
     finally:
-        if cur is not None:
-            cur.close()
-        if conn is not None:
-            conn.close()
-        print("Соединение с базой закрыто.")
+        cur.close()
+        conn.close()
 
 if __name__ == "__main__":
     start_sim()
