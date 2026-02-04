@@ -1,80 +1,116 @@
 # -*- coding: utf-8 -*-
 import psycopg2
+from psycopg2.extras import RealDictCursor
 import math
+import time
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def calculate_reliability():
+# --- КОНСТАНТЫ МОДЕЛИ ---
+# 1. Для ДВС (Модель Кокса)
+LAMBDA_0 = 0.000055
+COEFFS = {'temp': 6.95, 'rpm': 7.00} # Из файла formula
+
+# 2. Для Рамы (Правило Майнера)
+N_NORMAL = 100000.0
+N_OVERLOAD = 10000.0
+
+# --- СОСТОЯНИЕ СКРИПТА (чтобы не считать дважды) ---
+state = {
+    "last_cycle_count": 0,
+    "last_process_time": datetime.now()
+}
+
+def get_latest_telemetry(cur):
+    """Получает последние значения всех нужных датчиков одним запросом"""
+    cur.execute("""
+        SELECT DISTINCT ON (parameter_name) parameter_name, value, time
+        FROM telemetry
+        WHERE truck_id = 1
+        ORDER BY parameter_name, time DESC;
+    """)
+    rows = cur.fetchall()
+    return {r['parameter_name']: r['value'] for r in rows}
+
+def calculate_packet():
     conn = psycopg2.connect(
         host=os.getenv("DB_HOST"),
         database=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
+        password=os.getenv("DB_PASSWORD"),
+        port="5432"
     )
-    cur = conn.cursor()
+    # RealDictCursor позволяет обращаться к полям по именам, как в словаре
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Анализ данных...")
 
-    # 1. Получаем коэффициенты из базы
-    cur.execute("SELECT parameter_name, coefficient FROM model_coefficients")
-    coeffs = dict(cur.fetchall())
+    try:
+        # 1. Забираем свежую телеметрию
+        sensors = get_latest_telemetry(cur)
+        if not sensors:
+            return
 
-    # 2. Получаем последние данные датчиков
-    # (Для примера берем последние значения, в идеале - средние за минуту)
-    cur.execute("""
-        SELECT parameter_name, value FROM telemetry 
-        WHERE time > now() - interval '1 minute'
-    """)
-    sensors = dict(cur.fetchall())
+        updates_packet = [] # Сюда будем складывать расчеты
 
-    if sensors:
-        # 3. Нормализация (Метод Мин-Макс из файла Тимура)
-        # x_norm = (x - min) / (max - min)
-        # Здесь используем упрощенные границы из таблицы норм Виктории
-        x1 = (sensors.get('engine_temp', 90) - 80) / (115 - 80)
-        x2 = (sensors.get('oil_pressure', 400) - 170) / (550 - 170)
-        x4 = (sensors.get('rpm', 1000) - 600) / (2100 - 600)
+        # --- БЛОК 1: РАСЧЕТ ДВС (Модель Кокса - непрерывно) ---
+        temp = sensors.get('engine_temp', 85.0)
+        # Нормализация (Мин-Макс)
+        x_temp = (temp - 15) / (115 - 15)
+        exponent = COEFFS['temp'] * x_temp
+        failure_risk = LAMBDA_0 * math.exp(exponent)
         
-        # 4. Расчет по формуле: λ = λ0 * exp(a1x1 + a2x2 + ...)
-        # λ0 (базовый риск) возьмем из файла = 0.000055
-        lambda_0 = 0.000055
-        exponent = (coeffs['engine_temp'] * x1) + (coeffs['oil_pressure'] * x2) + (coeffs['rpm'] * x4)
-        
-        failure_rate = lambda_0 * math.exp(exponent)
+        updates_packet.append({
+            "name": "Engine System",
+            "prob": min(failure_risk, 1.0),
+            "wear": 0.0001 * (2.0 if temp > 95 else 1.0) # Упрощенный износ для примера
+        })
 
-        cur.execute("""
-            UPDATE component_health 
-            SET failure_probability = %s, 
-                last_update = now()
-            WHERE component_name = 'Engine System'
-        """, (min(failure_rate, 1.0),))
-        
-        # ДОБАВЬ ЭТУ СТРОКУ ДЛЯ ПРОВЕРКИ:
-        print(f"DEBUG: Попытка обновить 'Engine System'. Результат: {cur.rowcount} строк изменено.")
+        # --- БЛОК 2: РАСЧЕТ РАМЫ (Правило Майнера - по событию) ---
+        current_cycle = int(sensors.get('load_cycles', 0))
+        print(f"DEBUG: Текущий цикл в базе: {current_cycle}, Последний обработанный: {state['last_cycle_count']}")
+        if current_cycle > state["last_cycle_count"]:
+            payload = sensors.get('payload', 0.0)
+            # Считаем износ по Майнеру: 1/N
+            n_limit = N_OVERLOAD if payload > 100.0 else N_NORMAL
+            frame_wear = (1.0 / n_limit) * 100.0
+            
+            
+
+            updates_packet.append({
+                "name": "Frame System",
+                "prob": 0.01 if payload > 100.0 else 0.001, # Риск растет при перегрузе
+                "wear": frame_wear
+            })
+
+            print(f"Считаю износ рамы для цикла {current_cycle} = {frame_wear} ")
+            state["last_cycle_count"] = current_cycle
+            print(f"Detected new cycle: {current_cycle}. Calculating Frame wear...")
+
+        # --- БЛОК 3: ЗАПИСЬ ПАКЕТА В БАЗУ ---
+        for item in updates_packet:
+            cur.execute("""
+                UPDATE component_health 
+                SET failure_probability = %s,
+                    health_index = health_index - %s,
+                    last_update = now()
+                WHERE truck_id = 1 AND component_name = %s
+            """, (item['prob'], item['wear'], item['name']))
         
         conn.commit()
-        
-        # 5. Обновляем вероятность отказа в базе
-        cur.execute("""
-            UPDATE component_health 
-            SET failure_probability = %s, 
-                last_update = now()
-            WHERE component_name = 'Engine System'
-        """, (min(failure_rate, 1.0),)) # Вероятность не выше 100%
-        
-        conn.commit()
-        print(f"Расчет окончен. Текущий риск отказа: {failure_rate:.6f}")
+        print(f"Пакет обновлен: {len(updates_packet)} узлов обработано.")
 
-    cur.close()
-    conn.close()
+    except Exception as e:
+        print(f"Ошибка аналитики: {e}")
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == "__main__":
-    print("Smart Analytics Engine started...")
     while True:
-        try:
-            calculate_reliability()
-        except Exception as e:
-            print(f"Ошибка в цикле: {e}")
-        
-        import time
-        time.sleep(30) # Считать риск каждые 30 секунд
+        calculate_packet()
+        time.sleep(30) # Пауза между пакетами

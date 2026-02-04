@@ -2,10 +2,20 @@
 import psycopg2
 import time
 import os
+import random
 from datetime import datetime
 from dotenv import load_dotenv
 
 from belaz_model import BelazSim
+
+STATE_MAP = {
+    "GOING_TO_LOAD": 0,
+    "LOADING": 1,
+    "GOING_TO_DUMP": 2,
+    "UNLOADING": 3,
+    "GOING_TO_REFUEL": 4,
+    "REFUELING": 5
+}
 
 load_dotenv()
 
@@ -51,11 +61,13 @@ def start_sim():
             elif truck.state == "GOING_TO_LOAD":
                 truck.update_position(POINTS["LOAD"], speed = 40)
                 truck.incline = -5.0
-                if truck.is_at(POINTS["LOAD"]): truck.state = "LOADING"
+                if truck.is_at(POINTS["LOAD"]): 
+                    truck.state = "LOADING"
+                    truck.loading_cycles_count += 1
 
             elif truck.state == "LOADING":
                 truck.speed, truck.incline = 0.0, 0.0
-                truck.payload += 30.0
+                truck.payload += random.randint(10,20)
                 if truck.payload >= 90.0: truck.state = "GOING_TO_DUMP"
 
             elif truck.state == "GOING_TO_DUMP":
@@ -90,6 +102,8 @@ def start_sim():
                 (now, truck.truck_id, 'wheel_press_lf', truck.wheel_pressure_lf),
                 (now, truck.truck_id, 'wheel_press_rb', truck.wheel_pressure_rb),
                 (now, truck.truck_id, 'wheel_press_lb', truck.wheel_pressure_lb),
+                (now, truck.truck_id, 'load_cycles', truck.loading_cycles_count),
+                (now, truck.truck_id, 'current_state', STATE_MAP.get(truck.state, -1))
             ]
             for p in params:
                 cur.execute("INSERT INTO telemetry (time, truck_id, parameter_name, value) VALUES (%s, %s, %s, %s)", p)

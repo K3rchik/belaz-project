@@ -30,6 +30,7 @@ class BelazSim:
         self.lon = 33.412
         self.state = "GOING_TO_LOAD"
         self.incline = 0.0
+        self.loading_cycles_count = 0 # Счетчик циклов погрузки
 
         self.payload = 0.0
         self.basket_pressure = 0.0
@@ -111,6 +112,8 @@ class BelazSim:
 
         jitter = random.uniform(-500, 500) 
         self.wheel_pressure_lb += jitter
+
+        self.temp = random.uniform(0, 120)
         
         # Температура ДВС колеблется вокруг целевой
         self.temp += random.uniform(-0.2, 0.2)

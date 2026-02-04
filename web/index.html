@@ -2,35 +2,66 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Дашборд БелАЗ</title>
+    <title>БелАЗ: Цифровой Двойник</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #f4f4f4; }
-        .card { background: white; padding: 20px; border-radius: 10px; display: inline-block; margin-top: 50px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        #health-value { font-size: 48px; color: green; font-weight: bold; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; padding: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: #2d2d2d; padding: 20px; border-radius: 10px; border-left: 5px solid #ffcc00; }
+        .health-bar { background: #444; height: 20px; border-radius: 10px; margin-top: 10px; }
+        .health-fill { background: #4caf50; height: 100%; border-radius: 10px; transition: width 1s; }
+        .value { font-size: 24px; font-weight: bold; color: #ffcc00; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h1>Состояние БелАЗа №1</h1>
-        <div id="health-value">Загрузка...</div>
-        <p>Индекс здоровья (остаточный ресурс)</p>
+    <h1>🚚 Мониторинг БелАЗ №1</h1>
+    <div class="grid">
+        <div class="card">
+            <h3>Состояние систем (Здоровье)</h3>
+            <div id="health-container">Загрузка...</div>
+        </div>
+        <div class="card">
+            <h3>Текущие датчики</h3>
+            <p>Скорость: <span id="speed" class="value">0</span> км/ч</p>
+            <p>Температура ДВС: <span id="temp" class="value">0</span> °C</p>
+            <p>Топливо: <span id="fuel" class="value">0</span> л</p>
+            <p>Режим работы: <span id="status-text" style="color: #ffcc00; font-weight: bold;">Загрузка...</span></p>
+        </div>
     </div>
 
     <script>
-        // Функция для обновления данных с сервера
-        async function updateStatus() {
-            const response = await fetch('/api/status');
-            const data = await response.json();
-            document.getElementById('health-value').innerText = data.health_index.toFixed(2) + '%';
-        }
+        async function refresh() {
+            const res = await fetch('/api/data');
+            const data = await res.json();
+            
+            // Обновляем датчики
+            document.getElementById('speed').innerText = data.telemetry.speed?.toFixed(1) || 0;
+            document.getElementById('temp').innerText = data.telemetry.engine_temp?.toFixed(1) || 0;
+            document.getElementById('fuel').innerText = data.telemetry.fuel_level?.toFixed(0) || 0;
 
-        // Обновлять каждые 5 секунд
-        setInterval(updateStatus, 5000);
-        updateStatus();
+            // Обновляем полоски здоровья
+            let html = '';
+            data.health.forEach(item => {
+                html += `
+                    <p>${item.component_name}: ${item.health_index.toFixed(4)}%</p>
+                    <div class="health-bar"><div class="health-fill" style="width: ${item.health_index}%"></div></div>
+                    <small>Риск отказа: ${(item.failure_probability * 100).toFixed(4)}%</small>
+                `;
+            });
+            document.getElementById('health-container').innerHTML = html;
+
+            const stateNames = {
+                0: "🚛 Едет за грузом (порожний)",
+                1: "🏗️ Погрузка экскаватором",
+                2: "⛰️ Рейс на отвал (груженый)",
+                3: "📉 Разгрузка",
+                4: "⛽ Едет на заправку",
+                5: "🔌 Заправка топливом"
+                };
+            const stateCode = data.telemetry.current_state;
+            document.getElementById('status-text').innerText = stateNames[stateCode] || "Ожидание данных...";
+        }
+        setInterval(refresh, 3000);
+        refresh();
     </script>
 </body>
 </html>
-
-<!-- место для коментариев -->
-
-<!-- привет .з. -->
