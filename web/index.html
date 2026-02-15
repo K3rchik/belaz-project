@@ -24,6 +24,7 @@
             <p>Скорость: <span id="speed" class="value">0</span> км/ч</p>
             <p>Температура ДВС: <span id="temp" class="value">0</span> °C</p>
             <p>Топливо: <span id="fuel" class="value">0</span> л</p>
+            <p>Загруженность <span id="payload" class="value">0</span> т</p>
             <p>Режим работы: <span id="status-text" style="color: #ffcc00; font-weight: bold;">Загрузка...</span></p>
         </div>
     </div>
@@ -37,6 +38,7 @@
             document.getElementById('speed').innerText = data.telemetry.speed?.toFixed(1) || 0;
             document.getElementById('temp').innerText = data.telemetry.engine_temp?.toFixed(1) || 0;
             document.getElementById('fuel').innerText = data.telemetry.fuel_level?.toFixed(0) || 0;
+            document.getElementById('payload').innerText = data.telemetry.payload?.toFixed(0) || 0;
 
             // Обновляем полоски здоровья
             let html = '';
@@ -60,7 +62,7 @@
             const stateCode = data.telemetry.current_state;
             document.getElementById('status-text').innerText = stateNames[stateCode] || "Ожидание данных...";
         }
-        setInterval(refresh, 3000);
+        setInterval(refresh, 500);
         refresh();
     </script>
 </body>

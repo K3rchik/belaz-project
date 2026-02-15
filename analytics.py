@@ -9,6 +9,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# --- КОНСТАНТЫ ИЗ НАУЧНЫХ СТАТЕЙ ---
+# Статья Маслюкова, стр. 93
+THRESHOLDS_SFC = {
+    "GENTLE": 200,          # Щадящий (г/кВт*ч или г/ткм)
+    "ACTIVE": 245,          # Активно-форсированный
+    "REACTIVE": 290,        # Реактивно-форсированный
+    "AGGRESSIVE": 999       # Агрессивный
+}
+
+# Коэффициенты ускорения износа для режимов
+WEAR_MULTIPLIERS = {
+    "GENTLE": 1.0,
+    "ACTIVE": 1.4,
+    "REACTIVE": 3.0,
+    "AGGRESSIVE": 18.0     # ! Самое важное: в 18 раз быстрее
+}
+
 # --- КОНСТАНТЫ МОДЕЛИ ---
 # 1. Для ДВС (Модель Кокса)
 LAMBDA_0 = 0.000055
@@ -37,71 +54,121 @@ def get_latest_telemetry(cur):
 
 def calculate_packet():
     conn = psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        port="5432"
+        host=os.getenv("DB_HOST"), database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")
     )
-    # RealDictCursor позволяет обращаться к полям по именам, как в словаре
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Анализ данных...")
+    print(f"\n--- АНАЛИЗ [{datetime.now().strftime('%H:%M:%S')}] ---")
 
     try:
-        # 1. Забираем свежую телеметрию
-        sensors = get_latest_telemetry(cur)
-        if not sensors:
+        data = get_latest_telemetry(cur)
+        if not data: 
+            print("Нет данных телеметрии!")
             return
 
-        updates_packet = [] # Сюда будем складывать расчеты
-
-        # --- БЛОК 1: РАСЧЕТ ДВС (Модель Кокса - непрерывно) ---
-        temp = sensors.get('engine_temp', 85.0)
-        # Нормализация (Мин-Макс)
-        x_temp = (temp - 15) / (115 - 15)
-        exponent = COEFFS['temp'] * x_temp
-        failure_risk = LAMBDA_0 * math.exp(exponent)
+        # === ДАННЫЕ ===
+        fuel_rate = data.get('fuel_rate', 25.0)
+        speed = data.get('speed', 0.0)
+        payload_val = data.get('payload', 0.0) # Это значение из базы (в тоннах, например 90.0)
+        iron_ppm = data.get('oil_iron', 15.0)
         
-        updates_packet.append({
-            "name": "Engine System",
-            "prob": min(failure_risk, 1.0),
-            "wear": 0.0001 * (2.0 if temp > 95 else 1.0) # Упрощенный износ для примера
-        })
+        # ! ИСПРАВЛЕНИЕ: Приводим к кг для расчетов !
+        # Если в базе < 500, считаем что это тонны и переводим в кг
+        if payload_val < 500:
+            payload_kg = payload_val * 1000.0
+            payload_tons = payload_val
+        else:
+            payload_kg = payload_val
+            payload_tons = payload_val / 1000.0
 
-        # --- БЛОК 2: РАСЧЕТ РАМЫ (Правило Майнера - по событию) ---
-        current_cycle = int(sensors.get('load_cycles', 0))
-        print(f"DEBUG: Текущий цикл в базе: {current_cycle}, Последний обработанный: {state['last_cycle_count']}")
-        if current_cycle > state["last_cycle_count"]:
-            payload = sensors.get('payload', 0.0)
-            # Считаем износ по Майнеру: 1/N
-            n_limit = N_OVERLOAD if payload > 100.0 else N_NORMAL
-            frame_wear = (1.0 / n_limit) * 100.0
-            
-            
+        # =========================================================
+        # 1. ДВИГАТЕЛЬ (ENGINE)
+        # =========================================================
+        if speed > 5 and payload_tons > 0:
+            transport_work = payload_tons * speed
+            sfc = (fuel_rate * 850) / transport_work
+        else:
+            sfc = 100.0 
 
-            updates_packet.append({
-                "name": "Frame System",
-                "prob": 0.01 if payload > 100.0 else 0.001, # Риск растет при перегрузе
-                "wear": frame_wear
-            })
+        if sfc <= THRESHOLDS_SFC["GENTLE"]: mode = "GENTLE"
+        elif sfc <= THRESHOLDS_SFC["ACTIVE"]: mode = "ACTIVE"
+        elif sfc <= THRESHOLDS_SFC["REACTIVE"]: mode = "REACTIVE"
+        else: mode = "AGGRESSIVE"
 
-            print(f"Считаю износ рамы для цикла {current_cycle} = {frame_wear} ")
-            state["last_cycle_count"] = current_cycle
-            print(f"Detected new cycle: {current_cycle}. Calculating Frame wear...")
+        CRITICAL_IRON = 60.0
+        prob_engine = min(1.0, (iron_ppm / CRITICAL_IRON)**2)
+        engine_health = max(0.0, 100.0 - (prob_engine * 100.0))
 
-        # --- БЛОК 3: ЗАПИСЬ ПАКЕТА В БАЗУ ---
-        for item in updates_packet:
+        # Обновление ДВС
+        cur.execute("""
+            UPDATE component_health 
+            SET failure_probability = %s, health_index = %s, last_update = NOW()
+            WHERE truck_id = 1 AND component_name = 'Engine System'
+            RETURNING id
+        """, (prob_engine, engine_health))
+        
+        if cur.rowcount == 0:
             cur.execute("""
-                UPDATE component_health 
-                SET failure_probability = %s,
-                    health_index = health_index - %s,
-                    last_update = now()
-                WHERE truck_id = 1 AND component_name = %s
-            """, (item['prob'], item['wear'], item['name']))
+                INSERT INTO component_health (truck_id, component_name, failure_probability, health_index, last_update)
+                VALUES (1, 'Engine System', %s, %s, NOW())
+            """, (prob_engine, engine_health))
+
+        # История ДВС
+        cur.execute("""
+            INSERT INTO component_health_history 
+            (truck_id, component_name, health_index, failure_probability, last_update)
+            VALUES (1, 'Engine System', %s, %s, NOW())
+        """, (engine_health, prob_engine))
+
+        print(f"ДВС: Режим {mode} | Fe {iron_ppm:.1f} | Здоровье {engine_health:.2f}%")
+
+        # =========================================================
+        # 2. РАМА (FRAME SYSTEM) - ИСПРАВЛЕНО
+        # =========================================================
+        frame_damage = 0.0
         
+        # Проверяем условия (теперь используем payload_kg)
+        # 130 тонн = 130000 кг
+        if payload_kg > 130000:
+            frame_damage = 0.5 
+            print(f"!!! ПЕРЕГРУЗ РАМЫ: {payload_kg:.0f} кг !!!")
+        elif speed > 20 and payload_kg > 100000:
+            frame_damage = 0.05 
+            print(f"!!! ДИНАМИЧЕСКИЙ УДАР: {speed:.0f} км/ч с грузом {payload_kg:.0f} кг !!!")
+        
+        # 1. Пытаемся обновить и получить текущее здоровье
+        cur.execute("""
+            UPDATE component_health 
+            SET health_index = GREATEST(0, health_index - %s), last_update = NOW()
+            WHERE truck_id = 1 AND component_name = 'Frame System'
+            RETURNING health_index
+        """, (frame_damage,))
+        
+        row = cur.fetchone()
+        
+        # 2. Если записи не было - создаем
+        if row is None:
+            current_frame_health = 100.0
+            cur.execute("""
+                INSERT INTO component_health (truck_id, component_name, failure_probability, health_index, last_update)
+                VALUES (1, 'Frame System', 0.0, 100.0, NOW())
+            """)
+            print("Рама: Запись создана (была пустая)")
+        else:
+            current_frame_health = row['health_index']
+            # print(f"Рама: Обновлена. Здоровье: {current_frame_health:.4f}%")
+
+        # 3. Пишем историю Рамы
+        frame_prob = 1.0 - (current_frame_health / 100.0)
+        
+        cur.execute("""
+            INSERT INTO component_health_history 
+            (truck_id, component_name, health_index, failure_probability, last_update)
+            VALUES (1, 'Frame System', %s, %s, NOW())
+        """, (current_frame_health, frame_prob))
+
         conn.commit()
-        print(f"Пакет обновлен: {len(updates_packet)} узлов обработано.")
 
     except Exception as e:
         print(f"Ошибка аналитики: {e}")
@@ -113,4 +180,4 @@ def calculate_packet():
 if __name__ == "__main__":
     while True:
         calculate_packet()
-        time.sleep(30) # Пауза между пакетами
+        time.sleep(5) # Аналитика работает раз в 5 секунд

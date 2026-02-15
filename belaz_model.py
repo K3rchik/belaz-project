@@ -10,7 +10,8 @@ class BelazSim:
                  initial_hydraulic = 510.0,
                  initial_gearbox = 46,
                  initial_suspension_front = 31.6,
-                 initial_suspension_back = 29.1):
+                 initial_suspension_back = 29.1,
+                 initial_engine_hours=1000.0):
         
         #неизменяемые
         self.truck_id = truck_id
@@ -26,6 +27,7 @@ class BelazSim:
             self.lifting_cap = 136000
 
         #изменяемые
+        self.consuption = 0.0
         self.lat = 67.562
         self.lon = 33.412
         self.state = "GOING_TO_LOAD"
@@ -54,7 +56,10 @@ class BelazSim:
         self.speed = 0.0
         self.temp = 85.0
         self.rpm = 0.0
-        self.voltage = 24 
+        self.voltage = 24
+        self.oil_pressure = 4.5 
+        self.accumulated_iron = 15.0 # мг/кг (начальное загрязнение)
+        self.total_engine_hours = initial_engine_hours 
 
         #заправочные емкости
         self.fuel_level = initial_fuel #Топливный бак
@@ -69,23 +74,58 @@ class BelazSim:
         self.suspension_level_b2 = initial_suspension_back #Задние цилиндры подвески
 
 
-    def calculate_fuel_consumption(self):
-        """Математическая модель расхода топлива"""
-        base_idle = 25.0
-        if self.state == "REFUELING":
-            self.fuel_rate = 0.0
-            return 0.0
+    
 
-        if self.state == "LOADING":
-            self.fuel_rate = base_idle + (self.payload * 0.1)
-            return self.fuel_rate
-
-        # Физика движения
-        work_factor = (self.speed * 1.2) + (self.payload * 0.5)
-        incline_effect = math.sin(math.radians(self.incline)) * 10.0
-        load_multiplier = max(0.1, 1.0 + incline_effect)
+    def calculate_physics(self, dt_seconds=2):
+        """
+        Главный метод расчета физики. Вызывается каждый шаг симуляции.
+        """
+        # 1. Расчет общей массы (т)
+        total_mass_ton = (self.mass + self.payload) / 1000.0
         
-        self.fuel_rate = base_idle + (work_factor * load_multiplier)
+        # 2. РАСХОД ТОПЛИВА (Формула Паначева + адаптация)
+        # Базовый расход на холостых ~25 л/ч
+        base_consumption = 25.0 
+        
+        if self.speed > 1:
+            # Формула энергоемкости от уклона (Паначев, стр. 68): P = 0.0005*i^2 + ...
+            # i - уклон в промилле, у нас в процентах, умножаем на 10
+            i = self.incline * 10 
+            
+            # Коэффициент сопротивления движению (упрощенно)
+            # Если едем вверх (i>0) - тяжело, вниз - легко
+            if i > 0:
+                resistance_factor = (0.0005 * i**2 + 0.06 * i + 1.25)
+            else:
+                resistance_factor = 0.2 # Катимся накатом
+            
+            # Расход = (База + Работа по перемещению веса) * Сопротивление
+            work_load = (total_mass_ton * self.speed) / 200.0
+            self.fuel_rate = base_consumption + (work_load * resistance_factor)
+        else:
+            self.fuel_rate = base_consumption + (10 if self.payload > 0 else 0)
+
+        # 3. НАКОПЛЕНИЕ ЖЕЛЕЗА В МАСЛЕ (По статье Маслюкова)
+        # Скорость накопления зависит от нагрузки (расхода топлива)
+        # Нормальный расход ~80-100 л/ч. 
+        load_intensity = self.fuel_rate / 100.0
+        
+        # Формула скорости накопления (мг/кг в час):
+        # При агрессивной езде (load > 2.0) накопление идет экспоненциально
+        iron_rate_per_hour = 0.05 * math.exp(1.2 * (load_intensity - 1))
+        
+        # Добавляем к общему значению
+        step_hours = dt_seconds / 3600.0
+        self.accumulated_iron += iron_rate_per_hour * step_hours
+        self.total_engine_hours += step_hours
+        
+        # 4. Обновление бака
+        self.fuel_level -= self.fuel_rate * step_hours
+
+        # 5. Температура (инерция)
+        target_temp = 80 + (self.fuel_rate / 10.0) 
+        self.temp += (target_temp - self.temp) * 0.1
+
         return self.fuel_rate
 
     def update_position(self, target, speed):
