@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+	<!-- ширина области просмотра равна ширине экрана устройства, а начальный масштаб страницы при загрузке — 100% -->
+	<title>Белаз</title>
+	<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>		
+</head>
+<body>
+
+<style>
+body{
+	background-color: #f2e9e4;
+}
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+        
+        /* Кнопка для открытия списка */
+.dropbtn {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+	margin-right: 10%;
+}
+        
+        /* Выпадающий контент */
+.dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: #f9f9f9;
+    min-width: 178px;
+    z-index: 1;
+}
+        
+        /* Ссылки внутри выпадающего списка */
+.dropdown-content a {
+    color: black;
+    padding: 10px;
+    text-decoration: none;
+    display: block;
+}
+        
+        /* Подсветка при наведении */
+.dropdown-content a:hover {
+    background-color: #f1f1f1;
+}
+        
+        /* Показываем список при наведении */
+.dropdown:hover .dropdown-content {
+    display: block;
+}
+        
+        /* Меняем цвет кнопки при наведении */
+.dropdown:hover .dropbtn {
+    background-color: #3e8e41;
+}
+
+.heading{
+	background-color: #344e41;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width:100%;
+	top:0%;
+	left:0%;
+	position: fixed;
+	min-height: 50px;
+	z-index: 2;
+}
+
+.text{
+	color: white;
+	margin-left: 10px;
+}
+
+model-viewer{
+	padding-top: 80px;
+	width: 300px;
+	height: 300px;
+	align-items: center;
+
+}
+</style>
+
+	<header>
+		<div class="heading">
+			<h1 class="text">Вычисление остаточного ресурса узлов</h1>
+			<div class="dropdown">
+				<button class="dropbtn">Выберите модель</button>
+				<div class="dropdown-content">
+				<nav>
+					<a href="1.html">БелАЗ-75131</a>
+				</nav>
+				</div>
+			</div>
+		</div>
+	</header>
+
+<div style="display: flex; justify-content: center; border: white 5px;">
+    <model-viewer
+        src="Belaz75710.glb"
+        alt="3D модель"
+        camera-controls
+        auto-rotate
+        shadow-intensity="1"
+        exposure="0.8"
+        interaction-prompt="auto"
+        style="width: 100%; max-width: 800px; height: 500px;">
+    </model-viewer>
+</div>
+	
+</body>
+</html>
