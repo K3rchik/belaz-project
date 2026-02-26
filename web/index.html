@@ -2,68 +2,313 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>БелАЗ: Цифровой Двойник</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>БелАЗ - Мониторинг Ресурса</title>
+    <!-- Подключение 3D вьюера -->
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; padding: 20px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .card { background: #2d2d2d; padding: 20px; border-radius: 10px; border-left: 5px solid #ffcc00; }
-        .health-bar { background: #444; height: 20px; border-radius: 10px; margin-top: 10px; }
-        .health-fill { background: #4caf50; height: 100%; border-radius: 10px; transition: width 1s; }
-        .value { font-size: 24px; font-weight: bold; color: #ffcc00; }
+        body {
+            background-color: #f2e9e4;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* --- Стили Виктории (Шапка) --- */
+        .heading {
+            background-color: #344e41;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            height: 60px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+
+        .text {
+            color: white;
+            margin-left: 20px;
+            font-size: 1.2rem;
+        }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+            margin-right: 20px;
+        }
+
+        .dropbtn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: 0.3s;
+        }
+
+        .dropbtn:hover {
+            background-color: #3e8e41;
+        }
+
+        /* --- Основной контент (Grid) --- */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Левая часть - 3D модель */
+        .model-container {
+            flex: 2;
+            background: radial-gradient(circle, #ffffff 0%, #f2e9e4 100%);
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        model-viewer {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Правая часть - Дашборд с цифрами */
+        .dashboard-panel {
+            flex: 1;
+            background-color: #ffffff;
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 1px solid #ccc;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+        }
+
+        /* Карточки показателей */
+        .metric-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .metric-title {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .metric-sub {
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        /* Индикаторы здоровья */
+        .health-bar-container {
+            height: 10px;
+            background-color: #eee;
+            border-radius: 5px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .health-bar {
+            height: 100%;
+            width: 100%;
+            background-color: #4CAF50;
+            transition: width 0.5s ease-in-out, background-color 0.5s;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: white;
+            background-color: #999;
+        }
+
     </style>
 </head>
 <body>
-    <h1>🚚 Мониторинг БелАЗ №1</h1>
-    <div class="grid">
-        <div class="card">
-            <h3>Состояние систем (Здоровье)</h3>
-            <div id="health-container">Загрузка...</div>
+
+    <!-- Шапка -->
+    <header class="heading">
+        <h1 class="text">БЕЛАЗ: Мониторинг Остаточного Ресурса</h1>
+        <div class="dropdown">
+            <button class="dropbtn">Борт №101 (75131)</button>
         </div>
-        <div class="card">
-            <h3>Текущие датчики</h3>
-            <p>Скорость: <span id="speed" class="value">0</span> км/ч</p>
-            <p>Температура ДВС: <span id="temp" class="value">0</span> °C</p>
-            <p>Топливо: <span id="fuel" class="value">0</span> л</p>
-            <p>Загруженность <span id="payload" class="value">0</span> т</p>
-            <p>Режим работы: <span id="status-text" style="color: #ffcc00; font-weight: bold;">Загрузка...</span></p>
+    </header>
+
+    <!-- Основной контейнер -->
+    <div class="main-container">
+        
+        <!-- 3D Модель -->
+        <div class="model-container">
+            <!-- Убедись, что файл .glb лежит в папке web/ -->
+            <model-viewer
+                src="Belaz75710.glb" 
+                alt="3D модель самосвала"
+                camera-controls
+                auto-rotate
+                shadow-intensity="1"
+                exposure="1"
+                camera-orbit="45deg 55deg 25m"
+                min-camera-orbit="auto auto auto"
+                max-camera-orbit="auto auto auto">
+            </model-viewer>
+        </div>
+
+        <!-- Панель данных (Дашборд) -->
+        <div class="dashboard-panel">
+            
+            <!-- Карточка ДВС -->
+            <div class="metric-card">
+                <div class="metric-title">Двигатель (Cummins QSK-60)</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="metric-value" id="engine-health">100%</div>
+                    <div class="status-badge" id="engine-mode" style="background-color: #4CAF50;">GENTLE</div>
+                </div>
+                <div class="health-bar-container">
+                    <div class="health-bar" id="engine-bar" style="width: 100%;"></div>
+                </div>
+                <div class="metric-sub">
+                    Расход: <span id="fuel-rate">0</span> л/ч<br>
+                    Железо в масле: <span id="iron-ppm">0</span> мг/кг
+                </div>
+            </div>
+
+            <!-- Карточка Рамы -->
+            <div class="metric-card">
+                <div class="metric-title">Несущая Рама</div>
+                <div class="metric-value" id="frame-health">100%</div>
+                <div class="health-bar-container">
+                    <div class="health-bar" id="frame-bar" style="width: 100%;"></div>
+                </div>
+                <div class="metric-sub">Вероятность отказа: <span id="frame-prob">0</span>%</div>
+            </div>
+
+            <!-- Телеметрия -->
+            <div class="metric-card">
+                <div class="metric-title">Текущее состояние</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <div class="metric-value" style="font-size: 1.4rem;" id="speed">0</div>
+                        <div class="metric-sub">Скорость (км/ч)</div>
+                    </div>
+                    <div>
+                        <div class="metric-value" style="font-size: 1.4rem;" id="payload">0</div>
+                        <div class="metric-sub">Загрузка (т)</div>
+                    </div>
+                    <div>
+                        <div class="metric-value" style="font-size: 1.4rem;" id="fuel-level">0</div>
+                        <div class="metric-sub">Бак (л)</div>
+                    </div>
+                    <div>
+                        <div class="metric-value" style="font-size: 1.4rem;" id="incline">0</div>
+                        <div class="metric-sub">Уклон (%)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статус соединения -->
+            <div style="text-align: center; color: #aaa; font-size: 0.8rem; margin-top: 20px;">
+                Статус: <span id="connection-status">Подключение...</span>
+            </div>
+
         </div>
     </div>
 
+    <!-- Скрипт обновления данных -->
     <script>
-        async function refresh() {
-            const res = await fetch('/api/data');
-            const data = await res.json();
-            
-            // Обновляем датчики
-            document.getElementById('speed').innerText = data.telemetry.speed?.toFixed(1) || 0;
-            document.getElementById('temp').innerText = data.telemetry.engine_temp?.toFixed(1) || 0;
-            document.getElementById('fuel').innerText = data.telemetry.fuel_level?.toFixed(0) || 0;
-            document.getElementById('payload').innerText = data.telemetry.payload?.toFixed(0) || 0;
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/data');
+                if (!response.ok) throw new Error("Нет связи");
+                
+                const data = await response.json();
+                
+                // Обновляем статус
+                document.getElementById('connection-status').innerText = "Онлайн " + new Date().toLocaleTimeString();
+                document.getElementById('connection-status').style.color = "green";
 
-            // Обновляем полоски здоровья
-            let html = '';
-            data.health.forEach(item => {
-                html += `
-                    <p>${item.component_name}: ${item.health_index.toFixed(4)}%</p>
-                    <div class="health-bar"><div class="health-fill" style="width: ${item.health_index}%"></div></div>
-                    <small>Риск отказа: ${(item.failure_probability * 100).toFixed(4)}%</small>
-                `;
-            });
-            document.getElementById('health-container').innerHTML = html;
+                // --- 1. Телеметрия ---
+                document.getElementById('speed').innerText = Math.round(data.telemetry.speed);
+                // Если payload в кг, делим на 1000 для отображения
+                let payloadVal = data.telemetry.payload;
+                if (payloadVal > 500) payloadVal = payloadVal / 1000;
+                document.getElementById('payload').innerText = Math.round(payloadVal);
+                
+                document.getElementById('fuel-level').innerText = Math.round(data.telemetry.fuel_level);
+                document.getElementById('incline').innerText = data.telemetry.incline.toFixed(1);
+                document.getElementById('fuel-rate').innerText = data.telemetry.fuel_rate.toFixed(1);
+                document.getElementById('iron-ppm').innerText = data.telemetry.oil_iron.toFixed(2);
 
-            const stateNames = {
-                0: "🚛 Едет за грузом (порожний)",
-                1: "🏗️ Погрузка экскаватором",
-                2: "⛰️ Рейс на отвал (груженый)",
-                3: "📉 Разгрузка",
-                4: "⛽ Едет на заправку",
-                5: "🔌 Заправка топливом"
-                };
-            const stateCode = data.telemetry.current_state;
-            document.getElementById('status-text').innerText = stateNames[stateCode] || "Ожидание данных...";
+                // --- 2. Двигатель ---
+                const engHealth = data.health.Engine ? data.health.Engine.health_index : 100;
+                document.getElementById('engine-health').innerText = engHealth.toFixed(1) + "%";
+                document.getElementById('engine-bar').style.width = engHealth + "%";
+                updateBarColor('engine-bar', engHealth);
+
+                // Режим работы (раскраска)
+                // Примерная логика по расходу (можно тянуть с бэка, но пока так)
+                // В идеале analytics.py должен отдавать 'mode'
+                let modeText = "NORMAL";
+                let modeColor = "#4CAF50"; // Green
+                
+                // Просто для визуализации на фронте, если бэк не отдал режим
+                if (data.telemetry.fuel_rate > 100) { modeText = "ACTIVE"; modeColor = "#FFC107"; } // Orange
+                if (data.telemetry.fuel_rate > 150) { modeText = "AGGRESSIVE"; modeColor = "#F44336"; } // Red
+                
+                const badge = document.getElementById('engine-mode');
+                badge.innerText = modeText;
+                badge.style.backgroundColor = modeColor;
+
+
+                // --- 3. Рама ---
+                const frameHealth = data.health.Frame ? data.health.Frame.health_index : 100;
+                const frameProb = data.health.Frame ? (data.health.Frame.failure_probability * 100).toFixed(2) : 0;
+                
+                document.getElementById('frame-health').innerText = frameHealth.toFixed(1) + "%";
+                document.getElementById('frame-bar').style.width = frameHealth + "%";
+                document.getElementById('frame-prob').innerText = frameProb;
+                updateBarColor('frame-bar', frameHealth);
+
+            } catch (err) {
+                console.error(err);
+                document.getElementById('connection-status').innerText = "Ошибка соединения";
+                document.getElementById('connection-status').style.color = "red";
+            }
         }
-        setInterval(refresh, 500);
-        refresh();
+
+        function updateBarColor(elementId, value) {
+            const el = document.getElementById(elementId);
+            if (value > 80) el.style.backgroundColor = "#4CAF50"; // Green
+            else if (value > 50) el.style.backgroundColor = "#FFC107"; // Yellow
+            else el.style.backgroundColor = "#F44336"; // Red
+        }
+
+        // Запуск обновления раз в 1 секунду
+        setInterval(updateDashboard, 1000);
+        updateDashboard();
     </script>
+
 </body>
 </html>
