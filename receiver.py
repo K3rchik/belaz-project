@@ -77,10 +77,10 @@ def start_sim():
                 
                 # Поднимаем лимит, чтобы генератор не останавливался на 90т
                 # Если > 135, считаем что загружен
-                if truck.payload >= 135.0: 
-                    truck.state = "GOING_TO_DUMP"
-                    print(f"!!! ЭМУЛЯЦИЯ: Самосвал перегружен ({truck.payload} т) !!!")
-                elif truck.payload >= 90.0 and random.random() > 0.8:
+                #if truck.payload >= 135.0: 
+                #    truck.state = "GOING_TO_DUMP"
+                #   print(f"!!! ЭМУЛЯЦИЯ: Самосвал перегружен ({truck.payload} т) !!!")
+                if truck.payload >= 90.0 and random.random() > 0.8:
                      truck.state = "GOING_TO_DUMP" # Иногда уезжаем с нормой
 
             elif truck.state == "GOING_TO_DUMP":
