@@ -66,8 +66,17 @@ class RequestHandler(BaseHTTPRequestHandler):
         health_rows = cur.fetchall()
         health = {}
         for r in health_rows:
-            # Маппинг имен из БД в ключи JSON
-            key = "Engine" if "Engine" in r['component_name'] else "Frame"
+            # Улучшенный маппинг имен из БД
+            name = r['component_name']
+            if "Engine" in name:
+                key = "Engine"
+            elif "Frame" in name:
+                key = "Frame"
+            elif "Tire" in name:
+                key = "Tires"  # Добавляем распознавание шин
+            else:
+                key = name
+                
             health[key] = {
                 'health_index': r['health_index'],
                 'failure_probability': r['failure_probability']

@@ -20,6 +20,8 @@ class BelazSim:
         self.basket_volume = 104
         self.wheeltype = "diagonal" #диагональные (33.00-51 или 36/90-51)
                                     #радиальные (33.00R51)
+        self.t_ambient = 20.0        # Температура воздуха
+        self.picket_dist = 100.0     # Длина участка (пикета)
         
         if self.wheeltype == "diagonal":
             self.lifting_cap = 130000
@@ -27,6 +29,7 @@ class BelazSim:
             self.lifting_cap = 136000
 
         #изменяемые
+        self.turn_radius = 9999.0    # Радиус поворота (9999 - прямая)
         self.consuption = 0.0
         self.lat = 67.562
         self.lon = 33.412
@@ -139,27 +142,19 @@ class BelazSim:
         else: self.lon -= step
     
     def update_sensors(self):
-        """Имитация естественного колебания датчиков (шум)"""
-        # Давление в шинах
-        jitter = random.uniform(-500, 500) 
-        self.wheel_pressure_rf += jitter
-
-        jitter = random.uniform(-500, 500) 
-        self.wheel_pressure_lf += jitter
-
-        jitter = random.uniform(-500, 500) 
-        self.wheel_pressure_rb += jitter
-
-        jitter = random.uniform(-500, 500) 
-        self.wheel_pressure_lb += jitter
-
-        self.temp = random.uniform(0, 120)
+        # Q - нагрузка на одно колесо в тоннах
+        q_wheel = (self.mass + self.payload) / 6.0 / 1000.0
         
-        # Температура ДВС колеблется вокруг целевой
-        self.temp += random.uniform(-0.2, 0.2)
+        # Формула 2.15: t = 30.1 + 0.6*t_cp + 0.078 * Q * V
+        # Используем self.speed
+        calculated_temp = 30.1 + 0.6 * self.t_ambient + 0.078 * q_wheel * self.speed
         
-        # Напряжение сети (24В +/- 0.5В)
-        self.voltage = 24.0 + random.uniform(-0.5, 0.5)
+        # Обновляем температуры (можно добавить чуть-чуть шума для реализма)
+        self.wheel_temperature_rf = calculated_temp + random.uniform(-0.5, 0.5)
+        self.wheel_temperature_lf = calculated_temp + random.uniform(-0.5, 0.5)
+        self.wheel_temperature_rb = calculated_temp + random.uniform(-0.5, 0.5)
+        self.wheel_temperature_lb = calculated_temp + random.uniform(-0.5, 0.5)
+
 
     def is_at(self, target):
         """Проверка достижения точки"""

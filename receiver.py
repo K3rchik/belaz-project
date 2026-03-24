@@ -59,10 +59,13 @@ def start_sim():
                     truck.fuel_level = truck.fuel_capacity
 
             elif truck.state == "GOING_TO_LOAD":
-                truck.update_position(POINTS["LOAD"], speed = 35)
+                target_speed = 25 if random.random() < 0.3 else 15
+                truck.update_position(POINTS["LOAD"], speed = target_speed)
                 truck.incline = -8.0
+                truck.turn_radius = 150.0 if random.random() > 0.5 else 9999.0
                 if truck.is_at(POINTS["LOAD"]): 
                     truck.state = "LOADING"
+                    truck.turn_radius = 9999.0
                     truck.loading_cycles_count += 1
 
             elif truck.state == "LOADING":
@@ -126,7 +129,10 @@ def start_sim():
                 (now, truck.truck_id, 'wheel_press_lb', truck.wheel_pressure_lb),
                 (now, truck.truck_id, 'load_cycles', truck.loading_cycles_count),
                 (now, truck.truck_id, 'oil_iron', truck.accumulated_iron),
-                (now, truck.truck_id, 'current_state', STATE_MAP.get(truck.state, -1))
+                (now, truck.truck_id, 'current_state', STATE_MAP.get(truck.state, -1)),
+                (now, truck.truck_id, 'turn_radius', truck.turn_radius),
+                (now, truck.truck_id, 't_ambient', truck.t_ambient),
+                (now, truck.truck_id, 'wheel_temp_avg', truck.wheel_temperature_rf) # средняя по колесам
             ]
             for p in params:
                 cur.execute("INSERT INTO telemetry (time, truck_id, parameter_name, value) VALUES (%s, %s, %s, %s)", p)

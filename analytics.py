@@ -16,6 +16,7 @@ THRESHOLDS_SFC = {
     "ACTIVE": 245,          # Активно-форсированный
     "REACTIVE": 290,        # Реактивно-форсированный
     "AGGRESSIVE": 999       # Агрессивный
+    
 }
 
 # Коэффициенты ускорения износа для режимов
@@ -34,6 +35,12 @@ COEFFS = {'temp': 6.95, 'rpm': 7.00} # Из файла formula
 # 2. Для Рамы (Правило Майнера)
 N_NORMAL = 100000.0
 N_OVERLOAD = 10000.0
+
+# 3. Для КГШ 
+ALPHA_TIRE = 1.0e-7  # Износостойкость (стр. 61)
+SIGMA_TIRE = 30.0     # Теплоотдача (стр. 60)
+A_PO_TIRE = 15.0      # Площадь шины 33.00R51
+OTD_MAX = 78.5 # Начальный протектор
 
 # --- СОСТОЯНИЕ СКРИПТА (чтобы не считать дважды) ---
 state = {
@@ -168,6 +175,104 @@ def calculate_packet():
             VALUES (1, 'Frame System', %s, %s, NOW())
         """, (current_frame_health, frame_prob))
 
+        # =========================================================
+        # 3. КГШ
+        # =========================================================
+        # --- ВВОД ИСХОДНЫХ ДАННЫХ ---
+        speed = data.get('speed', 0.0)
+        payload_kg = data.get('payload', 0.0) * 1000.0 # Перевод в кг
+        incline = data.get('incline', 0.0)
+        radius = data.get('turn_radius', 9999.0)
+        p_bar = data.get('wheel_press_rf', 610000) / 100000.0
+        t_sh = data.get('wheel_temp_avg', 40.0)
+        
+        v_ms = speed / 3.6
+        g = 9.81
+        mass_empty = 107100
+        
+        # 1. РОМБ: Автосамосвал загружен? (Определение массы)
+        # В блок-схеме это влияет на распределение нагрузок
+        mass_total = mass_empty + payload_kg
+        
+        # Расчет нормальной реакции Rz (база для всех сил)
+        # Горюнов указывает, что нагрузка распределяется по осям. 
+        # Для 75131 груженого ~67% веса на заднюю ось (4 колеса)
+        rz_one_wheel = (mass_total * g * math.cos(math.radians(incline)) * 0.67) / 4.0
+
+        # 2. РОМБ: Движение на подъем (i >= 0) или спуск (i < 0)?
+        # Здесь выбираются формулы 2.31 или 2.32
+        
+        # Сначала считаем f (сопротивление качению) по ур. 2.24
+        f = 0.001 * ((20.2 / (0.64 * p_bar)) + (speed**3.7 / (778 * p_bar**2.03)))
+        
+        if incline >= 0:
+            # Определение Rx при подъеме (ур. 2.31 / 2.33)
+            # Сила тяги должна преодолеть и качение, и уклон
+            rx = rz_one_wheel * f + (mass_total / 4.0) * g * math.sin(math.radians(incline))
+        else:
+            # Определение Rx при спуске (ур. 2.32)
+            # Здесь сила может быть тормозной
+            rx = rz_one_wheel * f - (mass_total / 4.0) * g * math.sin(math.radians(abs(incline)))
+
+        # 3. РОМБ: Движение на повороте? (R < 1000)
+        # Определение Ry (ур. 2.35 / 2.36)
+        if radius < 1000:
+            ry = (rz_one_wheel * (v_ms**2)) / (g * radius)
+        else:
+            ry = 0.0
+
+        # --- ОПРЕДЕЛЕНИЕ ИЗНОСА НА УЧАСТКЕ (ур. 2.27) ---
+        # Теперь Rx и Ry вычислены корректно согласно состоянию БЕЛАЗа
+        s_step = v_ms * 2.0 # Путь за интервал 2 сек
+        
+        # Расчет мощностных составляющих (ур. 2.27)
+        if v_ms > 0.1:
+             # Общая мощность потерь в шине (N_п)
+            total_power_loss = (f * math.sqrt(rx**2 + ry**2)) / (1 - f)
+            
+            # Согласно стр. 52 диссертации, на трение (износ) идет 
+            # в среднем 10% (0.1) от общей мощности потерь.
+            # Остальные 90% уходят в тепло (гистерезис).
+            friction_power = total_power_loss * 0.10
+            
+            # Теперь считаем износ только от мощности трения
+            # Формула 2.21: I = alpha * A (где A - работа трения)
+            # Работа трения = Мощность трения * Время (или Сила * Путь)
+            wear_mm = ALPHA_TIRE * friction_power * s_step
+        else:
+            wear_mm = 0.0
+
+        # Обновление здоровья в БД
+        health_loss = (wear_mm / OTD_MAX) * 100.0
+        
+        # Обновляем текущее состояние
+        cur.execute("""
+            UPDATE component_health 
+            SET health_index = GREATEST(0, health_index - %s), 
+                failure_probability = %s,
+                last_update = NOW()
+            WHERE truck_id = 1 AND component_name = 'Tire System'
+            RETURNING health_index
+        """, (health_loss, 1.0 if t_sh > 120 else 0.0))
+        
+        # Если записи не было - создаем (первичная инициализация)
+        if cur.rowcount == 0:
+            cur.execute("""
+                INSERT INTO component_health (truck_id, component_name, failure_probability, health_index, last_update)
+                VALUES (1, 'Tire System', 0.0, 100.0, NOW())
+            """)
+            current_tire_health = 100.0
+        else:
+            current_tire_health = cur.fetchone()['health_index']
+
+        # 7. Запись в историю (для графиков на Web-сервере)
+        cur.execute("""
+            INSERT INTO component_health_history 
+            (truck_id, component_name, health_index, failure_probability, last_update)
+            VALUES (1, 'Tire System', %s, %s, NOW())
+        """, (current_tire_health, 1.0 if t_sh > 120 else 0.0))
+
+        print(f"ШИНЫ: Износ {wear_mm:.10f} мм | Здоровье {current_tire_health:.2f}% | T {t_sh:.1f}°C")
         conn.commit()
 
     except Exception as e:

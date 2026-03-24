@@ -205,6 +205,23 @@
                 <div class="metric-sub">Вероятность отказа: <span id="frame-prob">0</span>%</div>
             </div>
 
+            <!-- Карточка Шин (КГШ) -->
+            <div class="metric-card">
+                <div class="metric-title">Система шин (33.00R51)</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="metric-value" id="tire-health">100%</div>
+                    <div class="status-badge" id="tire-status" style="background-color: #4CAF50;">OK</div>
+                </div>
+                <div class="health-bar-container">
+                    <div class="health-bar" id="tire-bar" style="width: 100%;"></div>
+                </div>
+                <div class="metric-sub">
+                    Средняя T: <span id="tire-temp">0</span> °C 
+                    <span id="temp-warning" style="color: red; display: none;">⚠️ ПЕРЕГРЕВ</span><br>
+                    Давление: <span id="tire-press">0</span> bar
+                </div>
+            </div>
+
             <!-- Телеметрия -->
             <div class="metric-card">
                 <div class="metric-title">Текущее состояние</div>
@@ -260,7 +277,8 @@
                 document.getElementById('incline').innerText = data.telemetry.incline.toFixed(1);
                 document.getElementById('fuel-rate').innerText = data.telemetry.fuel_rate.toFixed(1);
                 document.getElementById('iron-ppm').innerText = data.telemetry.oil_iron.toFixed(2);
-
+                
+                
                 // --- 2. Двигатель ---
                 const engHealth = data.health.Engine ? data.health.Engine.health_index : 100;
                 document.getElementById('engine-health').innerText = engHealth.toFixed(1) + "%";
@@ -290,6 +308,39 @@
                 document.getElementById('frame-bar').style.width = frameHealth + "%";
                 document.getElementById('frame-prob').innerText = frameProb;
                 updateBarColor('frame-bar', frameHealth);
+
+                // --- 4. ШИНЫ (Новая логика) ---
+                if (data.health.Tires) {
+                    const tireHealth = data.health.Tires.health_index;
+                    document.getElementById('tire-health').innerText = tireHealth.toFixed(1) + "%";
+                    document.getElementById('tire-bar').style.width = tireHealth + "%";
+                    updateBarColor('tire-bar', tireHealth);}
+                
+                // Данные из телеметрии для шин
+                const t_sh = data.telemetry.wheel_temp_avg || 0;
+                const p_pa = data.telemetry.wheel_press_rf || 0;
+                const p_bar = p_pa / 100000; // Перевод из Паскалей в Бары
+
+                document.getElementById('tire-temp').innerText = t_sh.toFixed(1);
+                document.getElementById('tire-press').innerText = p_bar.toFixed(1);
+
+                // Логика предупреждений по температуре (Горюнов, стр. 50)
+                const tempBadge = document.getElementById('tire-status');
+                const warningText = document.getElementById('temp-warning');
+                
+                if (t_sh >= 120) {
+                    tempBadge.innerText = "CRITICAL";
+                    tempBadge.style.backgroundColor = "#F44336";
+                    warningText.style.display = "inline";
+                } else if (t_sh >= 100) {
+                    tempBadge.innerText = "WARNING";
+                    tempBadge.style.backgroundColor = "#FFC107";
+                    warningText.style.display = "none";
+                } else {
+                    tempBadge.innerText = "OK";
+                    tempBadge.style.backgroundColor = "#4CAF50";
+                    warningText.style.display = "none";
+                }
 
             } catch (err) {
                 console.error(err);
