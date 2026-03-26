@@ -246,13 +246,52 @@
         }
     }
 
-    async function updateDashboard() {
-    if (!materialsReady) {
-        if (findMaterials()) {
-            console.log('Материалы найдены');
-        } else {
-            return;
+    function toggleXray() {
+    xray = !xray;
+    xrayBtn.classList.toggle('active', xray);
+    xrayIndicator.classList.toggle('active', xray);
+    
+    if (xray) {
+        // Включаем рентген: вся модель полупрозрачная, кроме двигателя
+        if (model.model) {
+            model.model.materials.forEach(m => {
+                // Сохраняем оригинальные цвета если еще не сохранены
+                if (m.pbrMetallicRoughness && !orig.has(m)) {
+                    orig.set(m, [...m.pbrMetallicRoughness.baseColorFactor]);
+                }
+                
+                // Двигатель оставляем непрозрачным
+                if (m === mats.engine) {
+                    m.setAlphaMode("OPAQUE");
+                } else {
+                    // Все остальные материалы делаем полупрозрачными
+                    m.setAlphaMode("BLEND");
+                    if (m.pbrMetallicRoughness) {
+                        const currentColor = m.pbrMetallicRoughness.baseColorFactor;
+                        m.pbrMetallicRoughness.setBaseColorFactor([currentColor[0], currentColor[1], currentColor[2], 0.3]);
+                    }
+                }
+            });
         }
+    } else {
+        // Выключаем рентген: восстанавливаем все материалы
+        if (model.model) {
+            model.model.materials.forEach(m => {
+                m.setAlphaMode("OPAQUE");
+                if (orig.has(m)) {
+                    const origColor = orig.get(m);
+                    m.pbrMetallicRoughness.setBaseColorFactor([origColor[0], origColor[1], origColor[2], 1]);
+                }
+            });
+        }
+    }
+    
+    updateDashboard();
+}
+
+async function updateDashboard() {
+    if (!materialsReady) {
+        if (findMaterials()) return;
     }
     
     try {
@@ -265,81 +304,62 @@
         get('fuel-level').innerText = Math.round(data.telemetry.fuel_level || 0);
         get('incline').innerText = (data.telemetry.incline || 0).toFixed(1);
 
-        if (data.health.Engine) {
+        // Двигатель - всегда подсвечивается и непрозрачный
+        if (data.health.Engine && mats.engine) {
             const eh = data.health.Engine.health_index;
             get('engine-health').innerText = eh.toFixed(1) + '%';
             updateBar('engine-bar', eh);
             get('engine-status').innerText = getStatusText(eh);
-            // Убираем условие !xray - красим всегда
-            if (mats.engine) {
-                if (xray) {
-                    // В режиме рентгена делаем цветным, но полупрозрачным
-                    let col;
-                    if (eh > 80) col = [0.3, 0.8, 0.3];
-                    else if (eh > 40) col = [0.9, 0.7, 0.1];
-                    else col = [0.9, 0.2, 0.2];
-                    mats.engine.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 0.6]);
-                    mats.engine.setAlphaMode("BLEND");
-                } else {
-                    // Обычный режим
-                    highlight(mats.engine, eh);
-                }
+            
+            let col;
+            if (eh > 80) col = [0.3, 0.8, 0.3];
+            else if (eh > 40) col = [0.9, 0.7, 0.1];
+            else col = [0.9, 0.2, 0.2];
+            
+            mats.engine.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 1]);
+            
+            // В режиме рентгена убеждаемся что двигатель непрозрачный
+            if (xray) {
+                mats.engine.setAlphaMode("OPAQUE");
             }
         }
 
-        if (data.health.Frame) {
-            const fh = data.health.Frame.health_index;
-            get('frame-health').innerText = fh.toFixed(1) + '%';
-            updateBar('frame-bar', fh);
-            get('frame-status').innerText = getStatusText(fh);
-            if (mats.frame) {
-                if (xray) {
-                    let col;
-                    if (fh > 80) col = [0.3, 0.8, 0.3];
-                    else if (fh > 40) col = [0.9, 0.7, 0.1];
-                    else col = [0.9, 0.2, 0.2];
-                    mats.frame.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 0.6]);
-                    mats.frame.setAlphaMode("BLEND");
-                } else {
-                    highlight(mats.frame, fh);
-                }
+        // Остальные детали подсвечиваем только в обычном режиме
+        if (!xray) {
+            // Рама
+            if (data.health.Frame && mats.frame) {
+                const fh = data.health.Frame.health_index;
+                get('frame-health').innerText = fh.toFixed(1) + '%';
+                updateBar('frame-bar', fh);
+                get('frame-status').innerText = getStatusText(fh);
+                highlight(mats.frame, fh);
             }
-        }
 
-        // Аналогично для колес
-        const wheelKeys = ['Tire_FL', 'Tire_FR', 'Tire_RLI', 'Tire_RLO', 'Tire_RRI', 'Tire_RRO'];
-        wheelKeys.forEach(key => {
-            if (data.health[key]) {
-                const h = data.health[key].health_index;
-                updateBar(`${key}-bar`, h);
-                
-                const suffix = key.replace('Tire_', '').toLowerCase();
-                const p = (data.telemetry[`tire_press_${suffix}`] || 700000) / 100000;
-                const t = data.telemetry[`tire_temp_${suffix}`] || 40;
-                
-                get(`${key}-data`).innerText = `${p.toFixed(1)} bar | ${Math.round(t)}°C`;
-                
-                const item = get(`${key}-status`);
-                if (t > 110) item.className = 'wheel-status-item alarm';
-                else if (t > 90) item.className = 'wheel-status-item warning';
-                else item.className = 'wheel-status-item normal';
+            // Колеса
+            const wheelKeys = ['Tire_FL', 'Tire_FR', 'Tire_RLI', 'Tire_RLO', 'Tire_RRI', 'Tire_RRO'];
+            wheelKeys.forEach(key => {
+                if (data.health[key]) {
+                    const h = data.health[key].health_index;
+                    updateBar(`${key}-bar`, h);
+                    
+                    const suffix = key.replace('Tire_', '').toLowerCase();
+                    const p = (data.telemetry[`tire_press_${suffix}`] || 700000) / 100000;
+                    const t = data.telemetry[`tire_temp_${suffix}`] || 40;
+                    
+                    get(`${key}-data`).innerText = `${p.toFixed(1)} bar | ${Math.round(t)}°C`;
+                    
+                    const item = get(`${key}-status`);
+                    if (t > 110) item.className = 'wheel-status-item alarm';
+                    else if (t > 90) item.className = 'wheel-status-item warning';
+                    else item.className = 'wheel-status-item normal';
 
-                const meshName = wheelToMesh[key];
-                if (mats[meshName]) {
-                    if (xray) {
-                        let col;
-                        if (t > 110) col = [1, 0, 0];
-                        else if (h > 80) col = [0.3, 0.8, 0.3];
-                        else if (h > 40) col = [0.9, 0.7, 0.1];
-                        else col = [0.9, 0.2, 0.2];
-                        mats[meshName].pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 0.6]);
-                        mats[meshName].setAlphaMode("BLEND");
-                    } else {
+                    const meshName = wheelToMesh[key];
+                    if (mats[meshName]) {
                         highlight(mats[meshName], h, (t > 110 ? [1,0,0] : null));
                     }
                 }
-            }
-        });
+            });
+        }
 
         get('connection-status').innerText = 'Обновлено: ' + new Date().toLocaleTimeString();
         get('connection-status').style.color = "#1E1E1E";
@@ -349,13 +369,6 @@
         get('connection-status').innerText = 'Ошибка связи с БД';
         get('connection-status').style.color = "red";
     }
-}
-    
-    function toggleXray() {
-    xray = !xray;
-    xrayBtn.classList.toggle('active', xray);
-    xrayIndicator.classList.toggle('active', xray);
-    updateDashboard(); // Просто обновляем дашборд, он сам применит нужные цвета
 }
 
     model.addEventListener('load', () => {
