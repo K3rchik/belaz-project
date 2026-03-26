@@ -252,7 +252,7 @@
     xrayIndicator.classList.toggle('active', xray);
     
     if (xray) {
-        // Включаем рентген: вся модель становится белой полупрозрачной, двигатель подсвечивается
+        // Включаем рентген: вся модель становится белой полупрозрачной
         if (model.model) {
             model.model.materials.forEach(m => {
                 // Сохраняем оригинальные цвета если еще не сохранены
@@ -260,15 +260,10 @@
                     orig.set(m, [...m.pbrMetallicRoughness.baseColorFactor]);
                 }
                 
-                // Двигатель оставляем для подсветки
-                if (m === mats.engine) {
-                    m.setAlphaMode("OPAQUE");
-                } else {
-                    // Все остальные материалы делаем белыми и полупрозрачными
-                    m.setAlphaMode("BLEND");
-                    if (m.pbrMetallicRoughness) {
-                        m.pbrMetallicRoughness.setBaseColorFactor([0.95, 0.95, 0.95, 0.35]);
-                    }
+                // Все материалы делаем белыми и полупрозрачными
+                m.setAlphaMode("BLEND");
+                if (m.pbrMetallicRoughness) {
+                    m.pbrMetallicRoughness.setBaseColorFactor([0.95, 0.95, 0.95, 0.35]);
                 }
             });
         }
@@ -303,32 +298,17 @@ async function updateDashboard() {
         get('fuel-level').innerText = Math.round(data.telemetry.fuel_level || 0);
         get('incline').innerText = (data.telemetry.incline || 0).toFixed(1);
 
-        // Двигатель - подсвечиваем ТОЛЬКО в режиме рентгена
-        if (data.health.Engine && mats.engine) {
-            const eh = data.health.Engine.health_index;
-            get('engine-health').innerText = eh.toFixed(1) + '%';
-            updateBar('engine-bar', eh);
-            get('engine-status').innerText = getStatusText(eh);
-            
-            if (xray) {
-                // В режиме рентгена подсвечиваем двигатель
-                let col;
-                if (eh > 80) col = [0.3, 0.8, 0.3];
-                else if (eh > 40) col = [0.9, 0.7, 0.1];
-                else col = [0.9, 0.2, 0.2];
-                mats.engine.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 1]);
-                mats.engine.setAlphaMode("OPAQUE");
-            } else {
-                // В обычном режиме двигатель имеет оригинальный цвет
-                if (orig.has(mats.engine)) {
-                    const origColor = orig.get(mats.engine);
-                    mats.engine.pbrMetallicRoughness.setBaseColorFactor([origColor[0], origColor[1], origColor[2], 1]);
-                }
-            }
-        }
-
-        // Рама и колеса - подсвечиваем ТОЛЬКО в обычном режиме
+        // Подсветка деталей ТОЛЬКО в обычном режиме
         if (!xray) {
+            // Двигатель
+            if (data.health.Engine && mats.engine) {
+                const eh = data.health.Engine.health_index;
+                get('engine-health').innerText = eh.toFixed(1) + '%';
+                updateBar('engine-bar', eh);
+                get('engine-status').innerText = getStatusText(eh);
+                highlight(mats.engine, eh);
+            }
+
             // Рама
             if (data.health.Frame && mats.frame) {
                 const fh = data.health.Frame.health_index;
@@ -363,16 +343,35 @@ async function updateDashboard() {
                 }
             });
         } else {
-            // В режиме рентгена восстанавливаем оригинальные цвета для рамы и колес (они все равно белые полупрозрачные из toggleXray)
-            if (mats.frame && orig.has(mats.frame)) {
-                const origColor = orig.get(mats.frame);
-                mats.frame.pbrMetallicRoughness.setBaseColorFactor([origColor[0], origColor[1], origColor[2], 0.35]);
+            // В режиме рентгена просто обновляем текстовые данные без подсветки 3D
+            if (data.health.Engine) {
+                const eh = data.health.Engine.health_index;
+                get('engine-health').innerText = eh.toFixed(1) + '%';
+                updateBar('engine-bar', eh);
+                get('engine-status').innerText = getStatusText(eh);
             }
-            const wheelKeys = ['w1', 'w2', 'w3', 'w4'];
+            if (data.health.Frame) {
+                const fh = data.health.Frame.health_index;
+                get('frame-health').innerText = fh.toFixed(1) + '%';
+                updateBar('frame-bar', fh);
+                get('frame-status').innerText = getStatusText(fh);
+            }
+            const wheelKeys = ['Tire_FL', 'Tire_FR', 'Tire_RLI', 'Tire_RLO', 'Tire_RRI', 'Tire_RRO'];
             wheelKeys.forEach(key => {
-                if (mats[key] && orig.has(mats[key])) {
-                    const origColor = orig.get(mats[key]);
-                    mats[key].pbrMetallicRoughness.setBaseColorFactor([origColor[0], origColor[1], origColor[2], 0.35]);
+                if (data.health[key]) {
+                    const h = data.health[key].health_index;
+                    updateBar(`${key}-bar`, h);
+                    
+                    const suffix = key.replace('Tire_', '').toLowerCase();
+                    const p = (data.telemetry[`tire_press_${suffix}`] || 700000) / 100000;
+                    const t = data.telemetry[`tire_temp_${suffix}`] || 40;
+                    
+                    get(`${key}-data`).innerText = `${p.toFixed(1)} bar | ${Math.round(t)}°C`;
+                    
+                    const item = get(`${key}-status`);
+                    if (t > 110) item.className = 'wheel-status-item alarm';
+                    else if (t > 90) item.className = 'wheel-status-item warning';
+                    else item.className = 'wheel-status-item normal';
                 }
             });
         }
