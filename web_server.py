@@ -10,12 +10,12 @@ load_dotenv()
 
 class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/' or self.path == '/index.html':
+        if self.path == '/' or self.path == '/main.html':
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.end_headers()
             try:
-                with open('web/index.html', 'rb') as f:
+                with open('web/main.html', 'rb') as f:
                     self.wfile.write(f.read())
             except FileNotFoundError:
                 self.wfile.write(b"File not found. Please create web/index.html")
@@ -49,16 +49,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 1. Последняя телеметрия
         cur.execute("""
             SELECT DISTINCT ON (parameter_name) parameter_name, value
             FROM telemetry WHERE truck_id = 1
             ORDER BY parameter_name, time DESC;
         """)
-        telemetry_rows = cur.fetchall()
-        telemetry = {r['parameter_name']: r['value'] for r in telemetry_rows}
+        telemetry = {r['parameter_name']: r['value'] for r in cur.fetchall()}
 
-        # 2. Здоровье узлов
         cur.execute("""
             SELECT component_name, health_index, failure_probability 
             FROM component_health WHERE truck_id = 1;
@@ -66,16 +63,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         health_rows = cur.fetchall()
         health = {}
         for r in health_rows:
-            # Улучшенный маппинг имен из БД
             name = r['component_name']
-            if "Engine" in name:
-                key = "Engine"
-            elif "Frame" in name:
-                key = "Frame"
-            elif "Tire" in name:
-                key = "Tires"  # Добавляем распознавание шин
-            else:
-                key = name
+            # Приводим имена из БД к коротким ключам для фронтенда
+            if "Engine" in name: key = "Engine"
+            elif "Frame" in name: key = "Frame"
+            else: key = name # Для Tire_FL, Tire_FR и т.д.
                 
             health[key] = {
                 'health_index': r['health_index'],
@@ -84,7 +76,6 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         cur.close()
         conn.close()
-        
         return {"telemetry": telemetry, "health": health}
 
 def run(server_class=HTTPServer, handler_class=RequestHandler, port=8000):

@@ -6,209 +6,35 @@
     <title>БелАЗ: Мониторинг Ресурса</title>
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background-color: #dde0e3;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .heading {
-            background-color: #1E1E1E;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-            height: 80px;
-        }
-
-        .heading h1 {
-            color: #dde0e3;
-            font-size: 20px;
-        }
-
-        .xray-button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-
-        .xray-button.active {
-            background-color: #f44336;
-            box-shadow: 0 0 15px #f44336;
-        }
-
-        .xray-button:hover {
-            transform: scale(1.05);
-        }
-
-        .main-container {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .model-container {
-            flex: 2;
-            background-color: #2a2a2a;
-        }
-
-        model-viewer {
-            width: 100%;
-            height: 100%;
-            background-color: #2a2a2a;
-        }
-
-        .dashboard-panel {
-            flex: 0.9;
-            background-color: #A8A8A8;
-            padding: 20px;
-            overflow-y: auto;
-            border-left: 1px solid #1E1E1E;
-        }
-
-        .metric-card {
-            background: #dde0e3;
-            border: 1px solid #1E1E1E;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-
-        .metric-title {
-            font-size: 0.9rem;
-            color: #1E1E1E;
-            margin-bottom: 5px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .metric-value {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: #1E1E1E;
-        }
-
-        .metric-sub {
-            font-size: 0.85rem;
-            color: #1E1E1E;
-            margin-top: 5px;
-        }
-
-        .health-bar-container {
-            height: 10px;
-            background-color: #eee;
-            border-radius: 5px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-
-        .health-bar {
-            height: 100%;
-            width: 100%;
-            background-color: #4CAF50;
-            transition: width 0.5s;
-        }
-
-        .health-bar.warning { background-color: #FFC107; }
-        .health-bar.danger { background-color: #F44336; }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            color: white;
-            background-color: #999;
-        }
-
-        .wheel-status {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-        }
+        /* ... (все ваши стили остаются без изменений) ... */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background-color: #dde0e3; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+        .heading { background-color: #1E1E1E; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 80px; }
+        .heading h1 { color: #dde0e3; font-size: 20px; }
+        .xray-button { background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .xray-button.active { background-color: #f44336; box-shadow: 0 0 15px #f44336; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .model-container { flex: 2; background-color: #2a2a2a; }
+        model-viewer { width: 100%; height: 100%; background-color: #2a2a2a; }
+        .dashboard-panel { flex: 0.9; background-color: #A8A8A8; padding: 20px; overflow-y: auto; border-left: 1px solid #1E1E1E; }
+        .metric-card { background: #dde0e3; border: 1px solid #1E1E1E; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .metric-title { font-size: 0.9rem; color: #1E1E1E; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+        .metric-value { font-size: 1.8rem; font-weight: bold; color: #1E1E1E; }
+        .metric-sub { font-size: 0.85rem; color: #1E1E1E; margin-top: 5px; }
+        .health-bar-container { height: 10px; background-color: #ccc; border-radius: 5px; margin-top: 10px; overflow: hidden; border: 1px solid #999; }
+        .health-bar { height: 100%; width: 100%; background-color: #4CAF50; transition: width 0.5s; }
         
-        .wheel-status-item {
-            text-align: center;
-            padding: 8px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        
-        .wheel-status-item.normal {
-            background: rgba(76, 175, 80, 0.2);
-            color: #2e7d32;
-        }
-        
-        .wheel-status-item.warning {
-            background: rgba(255, 193, 7, 0.2);
-            color: #ff6f00;
-        }
-        
-        .wheel-status-item.alarm {
-            background: rgba(244, 67, 54, 0.2);
-            color: #c62828;
-        }
-
-        .sensor-data {
-            font-size: 11px;
-            margin-top: 4px;
-            color: #555;
-        }
-
-        .frame-status, .engine-status {
-            margin-top: 10px;
-            padding: 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-        }
-
-        .frame-status { background: rgba(255, 87, 34, 0.1); color: #e65100; }
-        .engine-status { background: rgba(33, 150, 243, 0.1); color: #0d47a1; }
-
-        .status-text {
-            text-align: center;
-            color: #1E1E1E;
-            font-size: 0.8rem;
-            margin-top: 20px;
-        }
-
-        .xray-indicator {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0,0,0,0.8);
-            color: #ffaa00;
-            padding: 10px 20px;
-            border-radius: 30px;
-            font-weight: bold;
-            z-index: 100;
-            display: none;
-        }
-
-        .xray-indicator.active {
-            display: block;
-        }
-
-        .flex-between {
-            display: flex;
-            justify-content: space-between;
-        }
+        /* Стили для колес */
+        .wheel-status { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+        .wheel-status-item { text-align: center; padding: 8px; border-radius: 4px; font-weight: bold; border: 1px solid #999; }
+        .wheel-status-item.normal { background: rgba(76, 175, 80, 0.2); color: #2e7d32; }
+        .wheel-status-item.warning { background: rgba(255, 193, 7, 0.2); color: #ff6f00; }
+        .wheel-status-item.alarm { background: rgba(244, 67, 54, 0.2); color: #c62828; }
+        .sensor-data { font-size: 11px; margin-top: 4px; color: #555; }
+        .status-text { text-align: center; color: #1E1E1E; font-size: 0.8rem; margin-top: 20px; }
+        .flex-between { display: flex; justify-content: space-between; }
+        .xray-indicator { position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.8); color: #ffaa00; padding: 10px 20px; border-radius: 30px; font-weight: bold; z-index: 100; display: none; }
+        .xray-indicator.active { display: block; }
     </style>
 </head>
 <body>
@@ -216,263 +42,245 @@
         <h1>БЕЛАЗ: МОНИТОРИНГ ОСТАТОЧНОГО РЕСУРСА</h1>
         <button class="xray-button" id="xrayBtn">🔍 РЕНТГЕН</button>
     </div>
+<div class="xray-indicator" id="xrayIndicator">🔍 РЕЖИМ РЕНТГЕНА</div>
 
-    <div class="xray-indicator" id="xrayIndicator">🔍 РЕЖИМ РЕНТГЕНА</div>
-
-    <div class="main-container">
-        <div class="model-container">
-            <model-viewer
-                id="belaz-model"
-                src="Belaz75131.glb"
-                alt="БелАЗ 75131"
-                camera-controls
-                auto-rotate
-                shadow-intensity="1"
-                exposure="1"
-                camera-orbit="-45deg 55deg 25m">
-            </model-viewer>
-        </div>
-
-        <div class="dashboard-panel">
-            <!-- Основные параметры -->
-            <div class="metric-card">
-                <div class="metric-title">ПАРАМЕТРЫ</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <div><span class="metric-value" id="speed">0</span><div class="metric-sub">км/ч</div></div>
-                    <div><span class="metric-value" id="payload">0</span><div class="metric-sub">т</div></div>
-                    <div><span class="metric-value" id="fuel-level">0</span><div class="metric-sub">л</div></div>
-                    <div><span class="metric-value" id="incline">0</span><div class="metric-sub">%</div></div>
-                </div>
-            </div>
-            
-            <!-- Двигатель -->
-            <div class="metric-card">
-                <div class="flex-between">
-                    <span class="metric-title">ДВИГАТЕЛЬ</span>
-                </div>
-                <div class="metric-value" id="engine-health">100%</div>
-                <div class="health-bar-container">
-                    <div class="health-bar" id="engine-bar"></div>
-                </div>
-                <div class="engine-status" id="engine-status">Отличное</div>
-            </div>
-
-            <!-- Рама -->
-            <div class="metric-card">
-                <div class="metric-title">РАМА</div>
-                <div class="metric-value" id="frame-health">100%</div>
-                <div class="health-bar-container">
-                    <div class="health-bar" id="frame-bar"></div>
-                </div>
-                <div class="frame-status" id="frame-status">Отличное</div>
-            </div>
-
-            <!-- Шины -->
-            <div class="metric-card">
-                <div class="metric-title">ШИНЫ</div>
-                <div class="flex-between">
-                    <span class="metric-sub">Правое переднее</span>
-                    <span class="metric-sub">Левое переднее</span>
-                </div>
-                <div class="wheel-status">
-                    <div class="wheel-status-item" id="wheel2-status">
-                        <span id="wheel2-text">Колесо 2</span>
-                        <div class="sensor-data" id="wheel2-data">0 | 0°C</div>
-                    </div>
-                    <div class="wheel-status-item" id="wheel1-status">
-                        <span id="wheel1-text">Колесо 1</span>
-                        <div class="sensor-data" id="wheel1-data">0 | 0°C</div>
-                    </div>
-                    <div class="wheel-status-item" id="wheel4-status">
-                        <span id="wheel4-text">Колесо 4</span>
-                        <div class="sensor-data" id="wheel4-data">0 | 0°C</div>
-                    </div>
-                    <div class="wheel-status-item" id="wheel3-status">
-                        <span id="wheel3-text">Колесо 3</span>
-                        <div class="sensor-data" id="wheel3-data">0 | 0°C</div>
-                    </div>
-                </div>
-                <div class="flex-between">
-                    <span class="metric-sub">Заднее правое</span>
-                    <span class="metric-sub">Заднее левое</span>
-                </div>
-            </div>
-
-            <div class="status-text" id="connection-status">Подключение...</div>
-        </div>
+<div class="main-container">
+    <div class="model-container">
+        <model-viewer
+            id="belaz-model"
+            src="Belaz75131.glb"
+            alt="БелАЗ 75131"
+            camera-controls
+            auto-rotate
+            shadow-intensity="1"
+            exposure="1"
+            camera-orbit="-45deg 55deg 25m">
+        </model-viewer>
     </div>
 
-    <script type="module">
-        const model = document.getElementById('belaz-model');
-        const xrayBtn = document.getElementById('xrayBtn');
-        const xrayIndicator = document.getElementById('xrayIndicator');
+    <div class="dashboard-panel">
+        <!-- Основные параметры -->
+        <div class="metric-card">
+            <div class="metric-title">ПАРАМЕТРЫ</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div><span class="metric-value" id="speed">0</span><div class="metric-sub">км/ч</div></div>
+                <div><span class="metric-value" id="payload">0</span><div class="metric-sub">т</div></div>
+                <div><span class="metric-value" id="fuel-level">0</span><div class="metric-sub">л</div></div>
+                <div><span class="metric-value" id="incline">0</span><div class="metric-sub">%</div></div>
+            </div>
+        </div>
         
-        // Состояние
-        const mats = { frame: null, engine: null, w1: null, w2: null, w3: null, w4: null };
-        const orig = new Map();
-        let xray = false;
+        <!-- Двигатель -->
+        <div class="metric-card">
+            <div class="metric-title">ДВИГАТЕЛЬ</div>
+            <div class="metric-value" id="engine-health">100%</div>
+            <div class="health-bar-container">
+                <div class="health-bar" id="engine-bar"></div>
+            </div>
+            <div class="metric-sub" id="engine-status">Загрузка...</div>
+        </div>
 
-        const get = id => document.getElementById(id);
-        const rand = (min, max) => min + Math.random() * (max - min);
+        <!-- Рама -->
+        <div class="metric-card">
+            <div class="metric-title">РАМА</div>
+            <div class="metric-value" id="frame-health">100%</div>
+            <div class="health-bar-container">
+                <div class="health-bar" id="frame-bar"></div>
+            </div>
+            <div class="metric-sub" id="frame-status">Загрузка...</div>
+        </div>
 
-        // Поиск материалов
-        function findMaterials() {
-            if (!model.model?.materials) return;
-            model.model.materials.forEach(m => {
-                const name = m.name;
-                if (m.pbrMetallicRoughness) orig.set(m, [...m.pbrMetallicRoughness.baseColorFactor]);
-                if (name === 'Материал') mats.frame = m;
-                else if (name === 'Материал.001') mats.w1 = m;
-                else if (name === 'Материал.002') mats.w2 = m;
-                else if (name === 'Материал.003') mats.w3 = m;
-                else if (name === 'Материал.004') mats.w4 = m;
-                else if (name === 'Материал.005') mats.engine = m;
-            });
-        }
+        <!-- Шины -->
+        <div class="metric-card">
+            <div class="metric-title">РЕСУРС ШИН (33.00R51)</div>
+            <div class="wheel-status" style="grid-template-columns: 1fr 1fr;">
+                <!-- ПЕРЕДНЯЯ ОСЬ -->
+                <div class="wheel-status-item" id="Tire_FL-status">
+                    <span>ЛЕВОЕ ПЕРЕД. (FL)</span>
+                    <div class="health-bar-container" style="height: 6px;"><div class="health-bar" id="Tire_FL-bar"></div></div>
+                    <div class="sensor-data" id="Tire_FL-data">0 | 0°C</div>
+                </div>
+                <div class="wheel-status-item" id="Tire_FR-status">
+                    <span>ПРАВОЕ ПЕРЕД. (FR)</span>
+                    <div class="health-bar-container" style="height: 6px;"><div class="health-bar" id="Tire_FR-bar"></div></div>
+                    <div class="sensor-data" id="Tire_FR-data">0 | 0°C</div>
+                </div>
+            </div>
+            <div class="wheel-status" style="grid-template-columns: 1fr 1fr 1fr 1fr; margin-top: 10px; gap: 5px;">
+                <!-- ЗАДНЯЯ ОСЬ -->
+                <div class="wheel-status-item" id="Tire_RLO-status" style="padding: 4px; font-size: 10px;">
+                    <span>RLO</span>
+                    <div class="health-bar-container" style="height: 4px;"><div class="health-bar" id="Tire_RLO-bar"></div></div>
+                    <div class="sensor-data" id="Tire_RLO-data">0|0</div>
+                </div>
+                <div class="wheel-status-item" id="Tire_RLI-status" style="padding: 4px; font-size: 10px;">
+                    <span>RLI</span>
+                    <div class="health-bar-container" style="height: 4px;"><div class="health-bar" id="Tire_RLI-bar"></div></div>
+                    <div class="sensor-data" id="Tire_RLI-data">0|0</div>
+                </div>
+                <div class="wheel-status-item" id="Tire_RRI-status" style="padding: 4px; font-size: 10px;">
+                    <span>RRI</span>
+                    <div class="health-bar-container" style="height: 4px;"><div class="health-bar" id="Tire_RRI-bar"></div></div>
+                    <div class="sensor-data" id="Tire_RRI-data">0|0</div>
+                </div>
+                <div class="wheel-status-item" id="Tire_RRO-status" style="padding: 4px; font-size: 10px;">
+                    <span>RRO</span>
+                    <div class="health-bar-container" style="height: 4px;"><div class="health-bar" id="Tire_RRO-bar"></div></div>
+                    <div class="sensor-data" id="Tire_RRO-data">0|0</div>
+                </div>
+            </div>
+        </div>
 
-        // Подсветка
-        function highlight(m, rgb, a = 1) {
-            if (!m?.pbrMetallicRoughness) return;
-            m.pbrMetallicRoughness.setBaseColorFactor([rgb[0], rgb[1], rgb[2], a]);
-        }
+        <div class="status-text" id="connection-status">Подключение...</div>
+    </div>
+</div>
 
-        // Сброс
-        function reset() {
-            orig.forEach((c, m) => {
-                if (m?.pbrMetallicRoughness) {
-                    m.setAlphaMode?.("OPAQUE");
-                    m.pbrMetallicRoughness.setBaseColorFactor(c);
-                }
-            });
-        }
+<script type="module">
+    const model = document.getElementById('belaz-model');
+    const xrayBtn = document.getElementById('xrayBtn');
+    const xrayIndicator = document.getElementById('xrayIndicator');
+    
+    // Маппинг: какое колесо из БД какому материалу в 3D соответствует
+    const wheelToMesh = {
+        'Tire_FL': 'w1', 'Tire_FR': 'w2',
+        'Tire_RLI': 'w3', 'Tire_RLO': 'w3', // Внутреннее и внешнее красим вместе
+        'Tire_RRI': 'w4', 'Tire_RRO': 'w4'
+    };
 
-        // Цвет по здоровью
-        function healthColor(h) {
-            if (h > 80) return [0,1,0];
-            if (h > 50) return [1,1,0];
-            if (h > 30) return [1,0.5,0];
-            return [1,0,0];
-        }
+    const mats = { frame: null, engine: null, w1: null, w2: null, w3: null, w4: null };
+    const orig = new Map();
+    let xray = false;
 
-        function healthStatus(h) {
-            if (h > 80) return 'Отличное';
-            if (h > 50) return 'Среднее';
-            if (h > 30) return 'Плохое';
-            return 'Критическое';
-        }
+    const get = id => document.getElementById(id);
 
-        // Цвет колеса
-        function wheelColor(p, t) {
-            if (p < 6 || p > 8 || t > 70) return [1,0,0];
-            if (p < 6.5 || p > 7.5 || t > 60) return [1,1,0];
-            return [0,1,0];
-        }
-
-        function wheelStatus(p, t) {
-            if (p < 6 || p > 8 || t > 70) return 'alarm';
-            if (p < 6.5 || p > 7.5 || t > 60) return 'warning';
-            return 'normal';
-        }
-
-        // Рентген
-        function toggleXray() {
-            xray = !xray;
-            
-            if (xray) {
-                xrayBtn.classList.add('active');
-                xrayBtn.textContent = '🔍 ВЫКЛЮЧИТЬ';
-                xrayIndicator.classList.add('active');
-                
-                [mats.frame, mats.w1, mats.w2, mats.w3, mats.w4].forEach(m => {
-                    if (m) {
-                        m.setAlphaMode?.("BLEND");
-                        highlight(m, [0.8,0.8,0.8], 0.3);
-                    }
-                });
-                
-                updateXrayEngine();
-            } else {
-                xrayBtn.classList.remove('active');
-                xrayBtn.textContent = '🔍 РЕНТГЕН';
-                xrayIndicator.classList.remove('active');
-                reset();
-            }
-        }
-
-        function updateXrayEngine() {
-            if (!mats.engine || !xray) return;
-            const h = parseInt(get('engine-health')?.innerText) || 100;
-            mats.engine.setAlphaMode?.("OPAQUE");
-            highlight(mats.engine, healthColor(h), 1);
-        }
-
-        // Обновление данных
-        function update() {
-            // Основные параметры
-            get('speed').innerText = Math.floor(rand(0,60));
-            get('payload').innerText = Math.floor(rand(0,400));
-            get('fuel-level').innerText = Math.floor(rand(500,1500));
-            get('incline').innerText = rand(0,15).toFixed(1);
-            
-            // Двигатель
-            const eh = Math.floor(rand(0,100));
-            get('engine-health').innerText = eh + '%';
-            const eb = get('engine-bar');
-            eb.style.width = eh + '%';
-            eb.className = `health-bar ${eh < 30 ? 'danger' : eh < 60 ? 'warning' : ''}`;
-            get('engine-status').innerText = healthStatus(eh);
-
-            // Рама
-            const fh = Math.floor(rand(0,100));
-            get('frame-health').innerText = fh + '%';
-            const fb = get('frame-bar');
-            fb.style.width = fh + '%';
-            fb.className = `health-bar ${fh < 30 ? 'danger' : fh < 60 ? 'warning' : ''}`;
-            get('frame-status').innerText = healthStatus(fh);
-
-            // Колеса
-            for (let i = 1; i <= 4; i++) {
-                const p = rand(5,9);
-                const t = rand(30,90);
-                const s = wheelStatus(p,t);
-                const txt = s === 'alarm' ? 'АВАРИЯ' : s === 'warning' ? 'Внимание' : 'норма';
-                
-                get(`wheel${i}-status`).className = `wheel-status-item ${s}`;
-                get(`wheel${i}-text`).innerHTML = `Колесо ${i}: ${txt}`;
-                get(`wheel${i}-data`).innerText = `${p.toFixed(1)} | ${Math.round(t)}°C`;
-            }
-
-            // Обновление цветов
-            if (xray) {
-                updateXrayEngine();
-            } else {
-                if (mats.engine) highlight(mats.engine, healthColor(eh), 1);
-                if (mats.frame) highlight(mats.frame, healthColor(fh), 1);
-                for (let i = 1; i <= 4; i++) {
-                    const m = mats[`w${i}`];
-                    if (m) {
-                        const d = get(`wheel${i}-data`).innerText.split(' | ');
-                        const p = parseFloat(d[0]) || 7;
-                        const t = parseInt(d[1]) || 45;
-                        highlight(m, wheelColor(p,t), 1);
-                    }
-                }
-            }
-
-            get('connection-status').innerText = 'Симуляция ' + new Date().toLocaleTimeString().slice(0,-3);
-        }
-
-        // Инициализация
-        model.addEventListener('load', () => {
-            setTimeout(() => {
-                findMaterials();
-                update();
-                setInterval(update, 3000);
-            }, 1000);
+    function findMaterials() {
+        if (!model.model?.materials) return;
+        model.model.materials.forEach(m => {
+            const name = m.name;
+            if (m.pbrMetallicRoughness) orig.set(m, [...m.pbrMetallicRoughness.baseColorFactor]);
+            if (m.name === 'Материал') mats.frame = m;
+            else if (m.name === 'Материал.001') mats.w1 = m;
+            else if (m.name === 'Материал.002') mats.w2 = m;
+            else if (m.name === 'Материал.003') mats.w3 = m;
+            else if (m.name === 'Материал.004') mats.w4 = m;
+            else if (m.name === 'Материал.005') mats.engine = m;
         });
+    }
 
-        xrayBtn.addEventListener('click', toggleXray);
-        get('connection-status').innerText = 'Инициализация...';
-    </script>
+    function updateBar(id, val) {
+        const el = get(id);
+        if (!el) return;
+        el.style.width = val + '%';
+        if (val > 80) el.style.backgroundColor = "#4CAF50";
+        else if (val > 40) el.style.backgroundColor = "#FFC107";
+        else el.style.backgroundColor = "#F44336";
+    }
+
+    function getStatusText(h) {
+        if (h > 80) return 'Отличное';
+        if (h > 50) return 'Норма';
+        return 'Требует ТО';
+    }
+
+    async function updateDashboard() {
+        try {
+            const response = await fetch('/api/data');
+            if (!response.ok) throw new Error("DB Error");
+            const data = await response.json();
+
+            // 1. Телеметрия
+            get('speed').innerText = Math.round(data.telemetry.speed || 0);
+            get('payload').innerText = (data.telemetry.payload > 500 ? data.telemetry.payload/1000 : data.telemetry.payload || 0).toFixed(0);
+            get('fuel-level').innerText = Math.round(data.telemetry.fuel_level || 0);
+            get('incline').innerText = (data.telemetry.incline || 0).toFixed(1);
+
+            // 2. Двигатель
+            if (data.health.Engine) {
+                const eh = data.health.Engine.health_index;
+                get('engine-health').innerText = eh.toFixed(1) + '%';
+                updateBar('engine-bar', eh);
+                get('engine-status').innerText = getStatusText(eh);
+                if (!xray && mats.engine) highlight(mats.engine, eh);
+            }
+
+            // 3. Рама
+            if (data.health.Frame) {
+                const fh = data.health.Frame.health_index;
+                get('frame-health').innerText = fh.toFixed(1) + '%';
+                updateBar('frame-bar', fh);
+                get('frame-status').innerText = getStatusText(fh);
+                if (!xray && mats.frame) highlight(mats.frame, fh);
+            }
+
+            // 4. Шины (6 колес)
+            const wheelKeys = ['Tire_FL', 'Tire_FR', 'Tire_RLI', 'Tire_RLO', 'Tire_RRI', 'Tire_RRO'];
+            wheelKeys.forEach(key => {
+                if (data.health[key]) {
+                    const h = data.health[key].health_index;
+                    updateBar(`${key}-bar`, h);
+                    
+                    const suffix = key.replace('Tire_', '').toLowerCase();
+                    const p = (data.telemetry[`tire_press_${suffix}`] || 700000) / 100000;
+                    const t = data.telemetry[`tire_temp_${suffix}`] || 40;
+                    
+                    get(`${key}-data`).innerText = `${p.toFixed(1)} bar | ${Math.round(t)}°C`;
+                    
+                    const item = get(`${key}-status`);
+                    if (t > 110) item.className = 'wheel-status-item alarm';
+                    else if (t > 90) item.className = 'wheel-status-item warning';
+                    else item.className = 'wheel-status-item normal';
+
+                    // Покраска колеса в 3D
+                    const meshName = wheelToMesh[key];
+                    if (!xray && mats[meshName]) {
+                        highlight(mats[meshName], h, (t > 110 ? [1,0,0] : null));
+                    }
+                }
+            });
+
+            get('connection-status').innerText = 'Обновлено: ' + new Date().toLocaleTimeString();
+            get('connection-status').style.color = "#1E1E1E";
+
+        } catch (err) {
+            console.error(err);
+            get('connection-status').innerText = 'Ошибка связи с БД';
+            get('connection-status').style.color = "red";
+        }
+    }
+
+    function highlight(m, health, overrideColor = null) {
+        if (!m?.pbrMetallicRoughness) return;
+        let col = overrideColor;
+        if (!col) {
+            if (health > 80) col = [0.3, 0.8, 0.3];
+            else if (health > 40) col = [0.9, 0.7, 0.1];
+            else col = [0.9, 0.2, 0.2];
+        }
+        m.pbrMetallicRoughness.setBaseColorFactor([...col, 1]);
+    }
+
+    function toggleXray() {
+        xray = !xray;
+        xrayBtn.classList.toggle('active', xray);
+        xrayIndicator.classList.toggle('active', xray);
+        if (xray) {
+            Object.values(mats).forEach(m => {
+                if (m) { m.setAlphaMode("BLEND"); m.pbrMetallicRoughness.setBaseColorFactor([0.5, 0.5, 0.5, 0.2]); }
+            });
+        } else {
+            if (model.model) {
+                model.model.materials.forEach(m => m.setAlphaMode("OPAQUE"));
+            }
+            updateDashboard();
+        }
+    }
+
+    model.addEventListener('load', () => {
+        findMaterials();
+        setInterval(updateDashboard, 2000);
+    });
+
+    xrayBtn.addEventListener('click', toggleXray);
+</script>
 </body>
 </html>

@@ -27,7 +27,6 @@ POINTS = {
 }
 
 def start_sim():
-    # Создаем объект БелАЗа
     truck = BelazSim(truck_id=1)
     interval = 2
     
@@ -40,9 +39,9 @@ def start_sim():
     cur = conn.cursor()
 
     try:
-        print("Система запущена.")
+        print("Система запущена. Мониторинг 6-ти колес активен.")
         while True:
-            # --- ЛОГИКА СОСТОЯНИЙ (теперь управляется здесь) ---
+            # --- ЛОГИКА СОСТОЯНИЙ ---
             if truck.fuel_level <= 100.0 and truck.state == "GOING_TO_LOAD":
                 truck.state = "GOING_TO_REFUEL"
 
@@ -70,34 +69,20 @@ def start_sim():
 
             elif truck.state == "LOADING":
                 truck.speed, truck.incline = 0.0, 0.0
-                
-                # --- ИЗМЕНЕНИЕ ДЛЯ ТЕСТА: Шанс перегруза ---
-                # В 20% случаев грузим до 140 тонн (это убьет раму)
                 if random.random() < 0.2:
-                    truck.payload += random.randint(30, 50) # Резкий наброс
+                    truck.payload += random.randint(30, 50)
                 else:
-                    truck.payload += random.randint(10, 20) # Нормальная погрузка
+                    truck.payload += random.randint(10, 20)
                 
-                # Поднимаем лимит, чтобы генератор не останавливался на 90т
-                # Если > 135, считаем что загружен
-                #if truck.payload >= 135.0: 
-                #    truck.state = "GOING_TO_DUMP"
-                #   print(f"!!! ЭМУЛЯЦИЯ: Самосвал перегружен ({truck.payload} т) !!!")
                 if truck.payload >= 90.0 and random.random() > 0.8:
-                     truck.state = "GOING_TO_DUMP" # Иногда уезжаем с нормой
+                     truck.state = "GOING_TO_DUMP"
 
             elif truck.state == "GOING_TO_DUMP":
-                # --- ИЗМЕНЕНИЕ ДЛЯ ТЕСТА: Превышение скорости ---
-                # Иногда едем 25 км/ч вместо 15
                 target_speed = 25 if random.random() < 0.3 else 15
-                
                 truck.update_position(POINTS["DUMP"], speed=target_speed)
-                truck.incline = 8.0 # Тяжелый подъем
-                if truck.is_at(POINTS["DUMP"]): truck.state = "UNLOADING"
-
-            elif truck.state == "GOING_TO_DUMP":
-                truck.update_position(POINTS["DUMP"], speed = 15)
-                truck.incline = 8.0
+                truck.incline = 8.0 
+                # Имитируем поворот на серпантине
+                truck.turn_radius = 200.0 if random.random() > 0.7 else 9999.0
                 if truck.is_at(POINTS["DUMP"]): truck.state = "UNLOADING"
 
             elif truck.state == "UNLOADING":
@@ -107,40 +92,52 @@ def start_sim():
                     truck.payload = 0
                     truck.state = "GOING_TO_LOAD"
 
-            # --- РАСЧЕТ ФИЗИКИ И ЗАПИСЬ ---
+            # --- РАСЧЕТ ФИЗИКИ ---
             truck.calculate_physics(dt_seconds=interval)
             truck.update_sensors()
 
-            # Запись в БД
+            # --- СБОР ДАННЫХ ПО СИСТЕМАМ ---
             now = datetime.now()
-            params = [
+            payload_to_db = [
+                # Группа: Общие (Vehicle)
                 (now, truck.truck_id, 'speed', truck.speed),
                 (now, truck.truck_id, 'payload', truck.payload),
+                (now, truck.truck_id, 'current_state', STATE_MAP.get(truck.state, -1)),
+                (now, truck.truck_id, 'incline', truck.incline),
+                (now, truck.truck_id, 'turn_radius', truck.turn_radius),
+                
+                # Группа: Двигатель (Engine)
                 (now, truck.truck_id, 'fuel_level', truck.fuel_level),
                 (now, truck.truck_id, 'fuel_rate', truck.fuel_rate),
                 (now, truck.truck_id, 'engine_temp', truck.temp),
-                (now, truck.truck_id, 'voltage', truck.voltage),
-                (now, truck.truck_id, 'incline', truck.incline),
-                (now, truck.truck_id, 'coolant_level', truck.cooling_level),
-                (now, truck.truck_id, 'hydraulic_level', truck.hydraulic_level),
-                (now, truck.truck_id, 'wheel_press_rf', truck.wheel_pressure_rf),
-                (now, truck.truck_id, 'wheel_press_lf', truck.wheel_pressure_lf),
-                (now, truck.truck_id, 'wheel_press_rb', truck.wheel_pressure_rb),
-                (now, truck.truck_id, 'wheel_press_lb', truck.wheel_pressure_lb),
-                (now, truck.truck_id, 'load_cycles', truck.loading_cycles_count),
                 (now, truck.truck_id, 'oil_iron', truck.accumulated_iron),
-                (now, truck.truck_id, 'current_state', STATE_MAP.get(truck.state, -1)),
-                (now, truck.truck_id, 'turn_radius', truck.turn_radius),
+                (now, truck.truck_id, 'voltage', truck.voltage),
+                (now, truck.truck_id, 'load_cycles', truck.loading_cycles_count),
+                
+                # Группа: Среда (Environment)
                 (now, truck.truck_id, 't_ambient', truck.t_ambient),
-                (now, truck.truck_id, 'wheel_temp_avg', truck.wheel_temperature_rf) # средняя по колесам
             ]
-            for p in params:
-                cur.execute("INSERT INTO telemetry (time, truck_id, parameter_name, value) VALUES (%s, %s, %s, %s)", p)
+
+            # Группа: Шины (Tires) - Динамически добавляем все 6 колес
+            for pos, val in truck.pressures.items():
+                payload_to_db.append((now, truck.truck_id, f'tire_press_{pos.lower()}', val))
+            
+            for pos, val in truck.temperatures.items():
+                payload_to_db.append((now, truck.truck_id, f'tire_temp_{pos.lower()}', val))
+
+            # Запись всего пакета в БД
+            cur.executemany(
+                "INSERT INTO telemetry (time, truck_id, parameter_name, value) VALUES (%s, %s, %s, %s)", 
+                payload_to_db
+            )
             
             conn.commit()
-            print(f"[{truck.state}] Топливо: {truck.fuel_level:.1f} л. Расход: {truck.fuel_rate:.1f} л/ч")
+            print(f"[{truck.state}] Данные отправлены. Скорость: {truck.speed} км/ч, Груз: {truck.payload} кг")
             time.sleep(interval)
 
+    except Exception as e:
+        print(f"Ошибка симулятора: {e}")
+        conn.rollback()
     finally:
         cur.close()
         conn.close()
