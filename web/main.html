@@ -150,6 +150,7 @@
     const mats = { frame: null, engine: null, w1: null, w2: null, w3: null, w4: null };
     const orig = new Map();
     let xray = false;
+    let materialsFound = false;
 
     const get = id => document.getElementById(id);
 
@@ -164,6 +165,7 @@
             else if (m.name === 'Материал.003') mats.w3 = m;
             else if (m.name === 'Материал.004') mats.w4 = m;
             else if (m.name === 'Материал.005') mats.engine = m;
+            materialsFound = true;
         });
     }
 
@@ -183,6 +185,9 @@
     }
 
     async function updateDashboard() {
+        if (!materialsFound && model.model?.materials) {
+        findMaterials();
+        }
         try {
             const response = await fetch('/api/data');
             if (!response.ok) throw new Error("DB Error");
@@ -277,6 +282,7 @@
 
     model.addEventListener('load', () => {
         findMaterials();
+        updateDashboard();
         setInterval(updateDashboard, 2000);
     });
 
