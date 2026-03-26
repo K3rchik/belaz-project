@@ -247,106 +247,116 @@
     }
 
     async function updateDashboard() {
-        if (!materialsReady) {
-            if (findMaterials()) {
-                console.log('Материалы найдены, обновляем дашборд');
-                // Тестовая покраска после нахождения материалов
-                setTimeout(() => testHighlightEngine(), 1000);
-            } else {
-                console.log('Материалы еще не готовы');
-                return;
-            }
+    if (!materialsReady) {
+        if (findMaterials()) {
+            console.log('Материалы найдены');
+        } else {
+            return;
         }
-        
-        try {
-            const response = await fetch('/api/data');
-            if (!response.ok) throw new Error("DB Error");
-            const data = await response.json();
+    }
+    
+    try {
+        const response = await fetch('/api/data');
+        if (!response.ok) throw new Error("DB Error");
+        const data = await response.json();
 
-            get('speed').innerText = Math.round(data.telemetry.speed || 0);
-            get('payload').innerText = (data.telemetry.payload > 500 ? data.telemetry.payload/1000 : data.telemetry.payload || 0).toFixed(0);
-            get('fuel-level').innerText = Math.round(data.telemetry.fuel_level || 0);
-            get('incline').innerText = (data.telemetry.incline || 0).toFixed(1);
+        get('speed').innerText = Math.round(data.telemetry.speed || 0);
+        get('payload').innerText = (data.telemetry.payload > 500 ? data.telemetry.payload/1000 : data.telemetry.payload || 0).toFixed(0);
+        get('fuel-level').innerText = Math.round(data.telemetry.fuel_level || 0);
+        get('incline').innerText = (data.telemetry.incline || 0).toFixed(1);
 
-            if (data.health.Engine) {
-                const eh = data.health.Engine.health_index;
-                get('engine-health').innerText = eh.toFixed(1) + '%';
-                updateBar('engine-bar', eh);
-                get('engine-status').innerText = getStatusText(eh);
-                if (!xray && mats.engine) {
-                    console.log('Красим двигатель, health:', eh);
+        if (data.health.Engine) {
+            const eh = data.health.Engine.health_index;
+            get('engine-health').innerText = eh.toFixed(1) + '%';
+            updateBar('engine-bar', eh);
+            get('engine-status').innerText = getStatusText(eh);
+            // Убираем условие !xray - красим всегда
+            if (mats.engine) {
+                if (xray) {
+                    // В режиме рентгена делаем цветным, но полупрозрачным
+                    let col;
+                    if (eh > 80) col = [0.3, 0.8, 0.3];
+                    else if (eh > 40) col = [0.9, 0.7, 0.1];
+                    else col = [0.9, 0.2, 0.2];
+                    mats.engine.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 0.6]);
+                    mats.engine.setAlphaMode("BLEND");
+                } else {
+                    // Обычный режим
                     highlight(mats.engine, eh);
-                } else if (!mats.engine) {
-                    console.log('Двигатель не найден в mats');
                 }
             }
+        }
 
-            if (data.health.Frame) {
-                const fh = data.health.Frame.health_index;
-                get('frame-health').innerText = fh.toFixed(1) + '%';
-                updateBar('frame-bar', fh);
-                get('frame-status').innerText = getStatusText(fh);
-                if (!xray && mats.frame) highlight(mats.frame, fh);
+        if (data.health.Frame) {
+            const fh = data.health.Frame.health_index;
+            get('frame-health').innerText = fh.toFixed(1) + '%';
+            updateBar('frame-bar', fh);
+            get('frame-status').innerText = getStatusText(fh);
+            if (mats.frame) {
+                if (xray) {
+                    let col;
+                    if (fh > 80) col = [0.3, 0.8, 0.3];
+                    else if (fh > 40) col = [0.9, 0.7, 0.1];
+                    else col = [0.9, 0.2, 0.2];
+                    mats.frame.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 0.6]);
+                    mats.frame.setAlphaMode("BLEND");
+                } else {
+                    highlight(mats.frame, fh);
+                }
             }
+        }
 
-            const wheelKeys = ['Tire_FL', 'Tire_FR', 'Tire_RLI', 'Tire_RLO', 'Tire_RRI', 'Tire_RRO'];
-            wheelKeys.forEach(key => {
-                if (data.health[key]) {
-                    const h = data.health[key].health_index;
-                    updateBar(`${key}-bar`, h);
-                    
-                    const suffix = key.replace('Tire_', '').toLowerCase();
-                    const p = (data.telemetry[`tire_press_${suffix}`] || 700000) / 100000;
-                    const t = data.telemetry[`tire_temp_${suffix}`] || 40;
-                    
-                    get(`${key}-data`).innerText = `${p.toFixed(1)} bar | ${Math.round(t)}°C`;
-                    
-                    const item = get(`${key}-status`);
-                    if (t > 110) item.className = 'wheel-status-item alarm';
-                    else if (t > 90) item.className = 'wheel-status-item warning';
-                    else item.className = 'wheel-status-item normal';
+        // Аналогично для колес
+        const wheelKeys = ['Tire_FL', 'Tire_FR', 'Tire_RLI', 'Tire_RLO', 'Tire_RRI', 'Tire_RRO'];
+        wheelKeys.forEach(key => {
+            if (data.health[key]) {
+                const h = data.health[key].health_index;
+                updateBar(`${key}-bar`, h);
+                
+                const suffix = key.replace('Tire_', '').toLowerCase();
+                const p = (data.telemetry[`tire_press_${suffix}`] || 700000) / 100000;
+                const t = data.telemetry[`tire_temp_${suffix}`] || 40;
+                
+                get(`${key}-data`).innerText = `${p.toFixed(1)} bar | ${Math.round(t)}°C`;
+                
+                const item = get(`${key}-status`);
+                if (t > 110) item.className = 'wheel-status-item alarm';
+                else if (t > 90) item.className = 'wheel-status-item warning';
+                else item.className = 'wheel-status-item normal';
 
-                    const meshName = wheelToMesh[key];
-                    if (!xray && mats[meshName]) {
+                const meshName = wheelToMesh[key];
+                if (mats[meshName]) {
+                    if (xray) {
+                        let col;
+                        if (t > 110) col = [1, 0, 0];
+                        else if (h > 80) col = [0.3, 0.8, 0.3];
+                        else if (h > 40) col = [0.9, 0.7, 0.1];
+                        else col = [0.9, 0.2, 0.2];
+                        mats[meshName].pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 0.6]);
+                        mats[meshName].setAlphaMode("BLEND");
+                    } else {
                         highlight(mats[meshName], h, (t > 110 ? [1,0,0] : null));
                     }
                 }
-            });
-
-            get('connection-status').innerText = 'Обновлено: ' + new Date().toLocaleTimeString();
-            get('connection-status').style.color = "#1E1E1E";
-
-        } catch (err) {
-            console.error(err);
-            get('connection-status').innerText = 'Ошибка связи с БД';
-            get('connection-status').style.color = "red";
-        }
-    }
-
-    function toggleXray() {
-        xray = !xray;
-        xrayBtn.classList.toggle('active', xray);
-        xrayIndicator.classList.toggle('active', xray);
-        if (xray) {
-            Object.values(mats).forEach(m => {
-                if (m) { 
-                    m.setAlphaMode("BLEND"); 
-                    m.pbrMetallicRoughness.setBaseColorFactor([0.5, 0.5, 0.5, 0.2]); 
-                }
-            });
-        } else {
-            if (model.model) {
-                model.model.materials.forEach(m => {
-                    m.setAlphaMode("OPAQUE");
-                    if (orig.has(m)) {
-                        const origColor = orig.get(m);
-                        m.pbrMetallicRoughness.setBaseColorFactor([origColor[0], origColor[1], origColor[2], 1]);
-                    }
-                });
             }
-            updateDashboard();
-        }
+        });
+
+        get('connection-status').innerText = 'Обновлено: ' + new Date().toLocaleTimeString();
+        get('connection-status').style.color = "#1E1E1E";
+
+    } catch (err) {
+        console.error(err);
+        get('connection-status').innerText = 'Ошибка связи с БД';
+        get('connection-status').style.color = "red";
     }
+}
+    
+    function toggleXray() {
+    xray = !xray;
+    xrayBtn.classList.toggle('active', xray);
+    xrayIndicator.classList.toggle('active', xray);
+    updateDashboard(); // Просто обновляем дашборд, он сам применит нужные цвета
+}
 
     model.addEventListener('load', () => {
         console.log('Модель загружена');
