@@ -154,23 +154,45 @@
     const get = id => document.getElementById(id);
 
     function findMaterials() {
-        if (!model.model?.materials) return false;
+        if (!model.model?.materials) {
+            console.log('Нет материалов в модели');
+            return false;
+        }
         
-        let found = false;
+        console.log('Все доступные материалы:');
         model.model.materials.forEach(m => {
-            const name = m.name;
+            console.log('-', m.name);
             if (m.pbrMetallicRoughness && !orig.has(m)) {
                 orig.set(m, [...m.pbrMetallicRoughness.baseColorFactor]);
             }
-            if (name === 'Материал') mats.frame = m;
-            else if (name === 'Материал.001') mats.w1 = m;
-            else if (name === 'Материал.002') mats.w2 = m;
-            else if (name === 'Материал.003') mats.w3 = m;
-            else if (name === 'Материал.004') mats.w4 = m;
-            else if (name === 'Материал.005') mats.engine = m;
+            if (m.name === 'Материал') {
+                mats.frame = m;
+                console.log('✓ Найдена рама');
+            }
+            else if (m.name === 'Материал.001') {
+                mats.w1 = m;
+                console.log('✓ Найдено колесо w1');
+            }
+            else if (m.name === 'Материал.002') {
+                mats.w2 = m;
+                console.log('✓ Найдено колесо w2');
+            }
+            else if (m.name === 'Материал.003') {
+                mats.w3 = m;
+                console.log('✓ Найдено колесо w3');
+            }
+            else if (m.name === 'Материал.004') {
+                mats.w4 = m;
+                console.log('✓ Найдено колесо w4');
+            }
+            else if (m.name === 'Материал.005') {
+                mats.engine = m;
+                console.log('✓ Найден двигатель');
+            }
         });
         
         materialsReady = !!(mats.engine || mats.frame);
+        console.log('Материалы готовы:', materialsReady, 'двигатель найден:', !!mats.engine);
         return materialsReady;
     }
 
@@ -190,7 +212,14 @@
     }
 
     function highlight(m, health, overrideColor = null) {
-        if (!m?.pbrMetallicRoughness) return;
+        if (!m) {
+            console.log('highlight: материал не существует');
+            return;
+        }
+        if (!m.pbrMetallicRoughness) {
+            console.log('highlight: нет pbrMetallicRoughness');
+            return;
+        }
         
         let col = overrideColor;
         if (!col) {
@@ -201,16 +230,30 @@
         
         try {
             m.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 1]);
+            console.log('highlight: цвет установлен', col, 'для материала', m.name);
         } catch(e) {
-            console.warn('Ошибка установки цвета:', e);
+            console.error('Ошибка установки цвета:', e);
+        }
+    }
+
+    // Тестовая функция для принудительной покраски двигателя
+    function testHighlightEngine() {
+        if (mats.engine) {
+            console.log('Тестовая покраска двигателя в красный');
+            mats.engine.pbrMetallicRoughness.setBaseColorFactor([1, 0, 0, 1]);
+        } else {
+            console.log('Двигатель не найден для теста');
         }
     }
 
     async function updateDashboard() {
         if (!materialsReady) {
             if (findMaterials()) {
-                console.log('Материалы найдены:', Object.keys(mats).filter(k => mats[k]));
+                console.log('Материалы найдены, обновляем дашборд');
+                // Тестовая покраска после нахождения материалов
+                setTimeout(() => testHighlightEngine(), 1000);
             } else {
+                console.log('Материалы еще не готовы');
                 return;
             }
         }
@@ -233,6 +276,8 @@
                 if (!xray && mats.engine) {
                     console.log('Красим двигатель, health:', eh);
                     highlight(mats.engine, eh);
+                } else if (!mats.engine) {
+                    console.log('Двигатель не найден в mats');
                 }
             }
 
@@ -293,7 +338,6 @@
             if (model.model) {
                 model.model.materials.forEach(m => {
                     m.setAlphaMode("OPAQUE");
-                    // Восстанавливаем оригинальные цвета
                     if (orig.has(m)) {
                         const origColor = orig.get(m);
                         m.pbrMetallicRoughness.setBaseColorFactor([origColor[0], origColor[1], origColor[2], 1]);
@@ -308,17 +352,22 @@
         console.log('Модель загружена');
         setTimeout(() => {
             findMaterials();
-            console.log('Найдены материалы:', {
-                engine: !!mats.engine,
-                frame: !!mats.frame,
-                w1: !!mats.w1,
-                w2: !!mats.w2,
-                w3: !!mats.w3,
-                w4: !!mats.w4
-            });
             updateDashboard();
+            // Тест через 3 секунды
+            setTimeout(() => testHighlightEngine(), 3000);
         }, 500);
         setInterval(updateDashboard, 2000);
+    });
+
+    // Добавляем кнопку для ручного теста в консоль
+    window.testHighlight = testHighlightEngine;
+    window.showMaterials = () => console.log('mats:', {
+        engine: mats.engine?.name,
+        frame: mats.frame?.name,
+        w1: mats.w1?.name,
+        w2: mats.w2?.name,
+        w3: mats.w3?.name,
+        w4: mats.w4?.name
     });
 
     xrayBtn.addEventListener('click', toggleXray);
