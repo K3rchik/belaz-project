@@ -118,7 +118,7 @@ def calculate_wheel_wear(wheel_pos, speed_kmh, payload_kg, incline_deg, radius_m
                 thermal_degradation = 1.0
                 if t_sh > 100.0:
                     # Плавно увеличиваем износ: при 100°C коэф=1.0, при 120°C коэф=3.0
-                    thermal_degradation = 1.0 + ((t_sh - 100.0) / 20.0) * 2.0
+                    thermal_degradation = 1.0 + ((t_sh - 100.0) / 20.0) * 10.0
                 
                 # Итоговый физический износ = Базовая износостойкость * Сила трения * Ухудшение от нагрева * Путь
                 wear_mm = ALPHA_TIRE * friction_force * thermal_degradation * s_step

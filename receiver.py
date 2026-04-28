@@ -19,16 +19,29 @@ STATE_MAP = {
 
 load_dotenv()
 
-# Константы маршрута
 POINTS = {
     "LOAD": {"lat": 67.548, "lon": 33.395},
     "DUMP": {"lat": 67.562, "lon": 33.412},
     "FUEL": {"lat": 67.574, "lon": 33.430}
 }
 
+#Описание трека по сегментам
+#Маршрут от Экскаватора (LOAD) до Отвала (DUMP)
+TRACK_ROUTE = [
+    {"id": 1, "length_m": 200, "incline": 0.0,  "radius": 9999.0, "speed_kmh": 25}, # Прямая из забоя
+    {"id": 2, "length_m": 400, "incline": 8.0,  "radius": 9999.0, "speed_kmh": 15}, # Крутой прямой подъем
+    {"id": 3, "length_m": 150, "incline": 8.0,  "radius": 45.0,   "speed_kmh": 10}, # Серпантин (подъем + поворот)
+    {"id": 4, "length_m": 300, "incline": 3.0,  "radius": 9999.0, "speed_kmh": 20}, # Пологий подъем
+    {"id": 5, "length_m": 100, "incline": 0.0,  "radius": 9999.0, "speed_kmh": 15}  # Подъезд к отвалу
+]
+
 def start_sim():
     truck = BelazSim(truck_id=1)
     interval = 2
+    
+    # Переменные для навигации по треку
+    current_segment_idx = 0
+    dist_on_segment = 0.0
     
     conn = psycopg2.connect(
         host=os.getenv("DB_HOST"),
@@ -41,6 +54,10 @@ def start_sim():
     try:
         print("Система запущена. Мониторинг 6-ти колес активен.")
         while True:
+            # Расчет пройденной дистанции за этот тик (interval)
+            # Формула: Скорость (км/ч) переводим в м/с и умножаем на секунды
+            travel_dist_m = (truck.speed * 1000 / 3600) * interval
+
             # --- ЛОГИКА СОСТОЯНИЙ ---
             if truck.fuel_level <= 100.0 and truck.state == "GOING_TO_LOAD":
                 truck.state = "GOING_TO_REFUEL"
@@ -56,13 +73,24 @@ def start_sim():
                 if truck.fuel_level >= truck.fuel_capacity: 
                     truck.state = "GOING_TO_LOAD"
                     truck.fuel_level = truck.fuel_capacity
+                    # Сброс навигации для пути обратно
+                    current_segment_idx = len(TRACK_ROUTE) - 1 
+                    dist_on_segment = 0.0
 
             elif truck.state == "GOING_TO_LOAD":
-                target_speed = 25 if random.random() < 0.3 else 15
-                truck.update_position(POINTS["LOAD"], speed = target_speed)
-                truck.incline = -8.0
-                truck.turn_radius = 150.0 if random.random() > 0.5 else 9999.0
-                if truck.is_at(POINTS["LOAD"]): 
+                # ЧИТАЕМ ТРЕК КАК СТЕК (С конца в начало)
+                if current_segment_idx >= 0:
+                    seg = TRACK_ROUTE[current_segment_idx]
+                    truck.speed = seg["speed_kmh"] + 10 # Порожний едет быстрее
+                    truck.incline = -seg["incline"]     # Подъем стал спуском
+                    truck.turn_radius = seg["radius"]
+                    
+                    dist_on_segment += travel_dist_m
+                    if dist_on_segment >= seg["length_m"]:
+                        current_segment_idx -= 1 # Шагаем назад по массиву
+                        dist_on_segment = 0.0
+                else:
+                    # Трек закончился
                     truck.state = "LOADING"
                     truck.turn_radius = 9999.0
                     truck.loading_cycles_count += 1
@@ -76,14 +104,26 @@ def start_sim():
                 
                 if truck.payload >= 90.0 and random.random() > 0.8:
                      truck.state = "GOING_TO_DUMP"
+                     # Сброс навигации для пути туда
+                     current_segment_idx = 0 
+                     dist_on_segment = 0.0
 
             elif truck.state == "GOING_TO_DUMP":
-                target_speed = 25 if random.random() < 0.3 else 15
-                truck.update_position(POINTS["DUMP"], speed=target_speed)
-                truck.incline = 8.0 
-                # Имитируем поворот на серпантине
-                truck.turn_radius = 200.0 if random.random() > 0.7 else 9999.0
-                if truck.is_at(POINTS["DUMP"]): truck.state = "UNLOADING"
+                # ЧИТАЕМ ТРЕК КАК ОЧЕРЕДЬ (С начала в конец)
+                if current_segment_idx < len(TRACK_ROUTE):
+                    seg = TRACK_ROUTE[current_segment_idx]
+                    truck.speed = seg["speed_kmh"]
+                    truck.incline = seg["incline"]
+                    truck.turn_radius = seg["radius"]
+                    
+                    dist_on_segment += travel_dist_m
+                    # Проверяем, проехали ли мы этот сегмент
+                    if dist_on_segment >= seg["length_m"]:
+                        current_segment_idx += 1 # Шагаем вперед
+                        dist_on_segment = 0.0    # Обнуляем прогресс для нового сегмента
+                else:
+                    # Трек закончился, приехали на выгрузку
+                    truck.state = "UNLOADING"
 
             elif truck.state == "UNLOADING":
                 truck.speed, truck.incline = 0.0, 0.0
@@ -91,48 +131,47 @@ def start_sim():
                 if truck.payload <= 0:
                     truck.payload = 0
                     truck.state = "GOING_TO_LOAD"
+                    # Сброс навигации для пути обратно
+                    current_segment_idx = len(TRACK_ROUTE) - 1 
+                    dist_on_segment = 0.0
 
             # --- РАСЧЕТ ФИЗИКИ ---
+            # Теперь calculate_physics работает с реальными данными сегмента трека!
             truck.calculate_physics(dt_seconds=interval)
             truck.update_sensors()
 
-            # --- СБОР ДАННЫХ ПО СИСТЕМАМ ---
+            # --- СБОР ДАННЫХ ПО СИСТЕМАМ (Осталось без изменений) ---
             now = datetime.now()
             payload_to_db = [
-                # Группа: Общие (Vehicle)
                 (now, truck.truck_id, 'speed', truck.speed),
                 (now, truck.truck_id, 'payload', truck.payload),
                 (now, truck.truck_id, 'current_state', STATE_MAP.get(truck.state, -1)),
                 (now, truck.truck_id, 'incline', truck.incline),
                 (now, truck.truck_id, 'turn_radius', truck.turn_radius),
-                
-                # Группа: Двигатель (Engine)
                 (now, truck.truck_id, 'fuel_level', truck.fuel_level),
                 (now, truck.truck_id, 'fuel_rate', truck.fuel_rate),
                 (now, truck.truck_id, 'engine_temp', truck.temp),
                 (now, truck.truck_id, 'oil_iron', truck.accumulated_iron),
                 (now, truck.truck_id, 'voltage', truck.voltage),
                 (now, truck.truck_id, 'load_cycles', truck.loading_cycles_count),
-                
-                # Группа: Среда (Environment)
                 (now, truck.truck_id, 't_ambient', truck.t_ambient),
             ]
 
-            # Группа: Шины (Tires) - Динамически добавляем все 6 колес
             for pos, val in truck.pressures.items():
                 payload_to_db.append((now, truck.truck_id, f'tire_press_{pos.lower()}', val))
-            
             for pos, val in truck.temperatures.items():
                 payload_to_db.append((now, truck.truck_id, f'tire_temp_{pos.lower()}', val))
 
-            # Запись всего пакета в БД
             cur.executemany(
                 "INSERT INTO telemetry (time, truck_id, parameter_name, value) VALUES (%s, %s, %s, %s)", 
                 payload_to_db
             )
-            
             conn.commit()
-            print(f"[{truck.state}] Данные отправлены. Скорость: {truck.speed} км/ч, Груз: {truck.payload} кг")
+            
+            # Выводим инфу, чтобы видеть, как он едет по сегментам
+            seg_info = f"Сегмент [{current_segment_idx}]" if "GOING" in truck.state else ""
+            print(f"[{truck.state}] {seg_info} Скорость: {truck.speed} км/ч, Уклон: {truck.incline}%")
+            
             time.sleep(interval)
 
     except Exception as e:
