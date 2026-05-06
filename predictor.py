@@ -197,18 +197,85 @@ def predict_shift_wear(track_route, num_cycles, payload_kg, t_ambient=20.0, nomi
 
     return virtual_state
 
-# --- 4. ТЕСТОВЫЙ ЗАПУСК ---
+# =====================================================================
+# ТЕСТИРОВАНИЕ РАБОТЫ СКРИПТА (ЗАГРУЗКА ТРАССЫ ИЗ БД)
+# =====================================================================
+import psycopg2
+import psycopg2.extras
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def fetch_track_from_db():
+    """ Читает трассу Андрея из базы данных и преобразует в формат сегментов. """
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST"), database=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")
+        )
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Читаем все точки маршрута, отсортированные по ID (или по дистанции)
+        cur.execute("SELECT * FROM track_data ORDER BY id ASC;")
+        rows = cur.fetchall()
+        
+        track_route = []
+        prev_distance = 0.0
+        
+        for row in rows:
+            current_distance = float(row['distance'])
+            
+            # Вычисляем длину конкретного сегмента (разница между точками)
+            segment_length = current_distance - prev_distance
+            
+            # Защита от нулевых сегментов (например, самая первая точка)
+            if segment_length <= 0:
+                segment_length = 5.0 # Стандартный шаг Андрея
+                
+            track_route.append({
+                "id": row['id'],
+                "length_m": segment_length,
+                "incline": float(row['incline']),
+                "radius": float(row['turn_radius']),
+                "speed_kmh": float(row['speed'])
+            })
+            
+            prev_distance = current_distance
+            
+        cur.close()
+        conn.close()
+        return track_route
+        
+    except Exception as e:
+        print(f"Ошибка загрузки трассы из БД: {e}")
+        return []
+
 if __name__ == "__main__":
-    SAMPLE_TRACK = [
-        {"id": 1, "length_m": 200, "incline": 0.0,  "radius": 9999.0, "speed_kmh": 25}, 
-        {"id": 2, "length_m": 400, "incline": 8.0,  "radius": 9999.0, "speed_kmh": 15}, 
-        {"id": 3, "length_m": 150, "incline": 8.0,  "radius": 45.0,   "speed_kmh": 10}, # Серпантин
-        {"id": 4, "length_m": 300, "incline": 3.0,  "radius": 9999.0, "speed_kmh": 20}, 
-        {"id": 5, "length_m": 100, "incline": 0.0,  "radius": 9999.0, "speed_kmh": 15}  
-    ]
     
-    results = predict_shift_wear(SAMPLE_TRACK, num_cycles=32000, payload_kg=130000, t_ambient=30.0)
+    # 1. Загружаем реальную трассу Андрея
+    REAL_TRACK = fetch_track_from_db()
     
-    for w_id, data in results.items():
-        health = 100.0 - ((data['wear_mm'] / OTD_MAX) * 100.0)
-        print(f"[{w_id}] {data['pos'].upper()}: {health:.2f}% (T: {data['temp_c']:.1f}°C, Стерто: {data['wear_mm']:.4f}мм)")
+    if not REAL_TRACK:
+        print("В базе нет данных о трассе! Запустите скрипт Андрея в Unity.")
+    else:
+        print(f"Успешно загружено {len(REAL_TRACK)} сегментов трассы из БД.")
+        
+        # 2. Запускаем симуляцию
+        # t_ambient = 30.0 (Лето), Груз = 130 000 кг (Полный)
+        results = predict_shift_wear(
+            track_route=REAL_TRACK, 
+            num_cycles=30, 
+            payload_kg=130000.0, 
+            t_ambient=30.0       
+        )
+        
+        # 3. Красивый вывод в консоль
+        print("\n=== РЕЗУЛЬТАТЫ СИМУЛЯЦИИ (30 РЕЙСОВ ПО РЕАЛЬНОЙ ТРАССЕ) ===")
+        for w_id, data in results.items():
+            health_percent = 100.0 - ((data['wear_mm'] / OTD_MAX) * 100.0)
+            print(f"[{w_id}] ({data['pos'].upper()}):")
+            print(f"  Стерто протектора: {data['wear_mm']:.4f} мм")
+            print(f"  Остаток ресурса:   {health_percent:.2f}%")
+            print(f"  Температура:       {data['temp_c']:.1f} °C")
+            print("-" * 40)

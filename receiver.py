@@ -167,6 +167,31 @@ def start_sim():
                 payload_to_db
             )
             conn.commit()
+
+            # --- ОБНОВЛЕНИЕ НАРАБОТКИ УЗЛОВ (Моточасы) ---
+            # Передаем словарь working_hours из объекта truck в новую таблицу
+            wh = truck.working_hours
+            cur.execute("""
+                UPDATE working_hours SET
+                    engine = %s,
+                    frame = %s,
+                    hydraulic = %s,
+                    tire_fl = %s,
+                    tire_fr = %s,
+                    tire_rli = %s,
+                    tire_rlo = %s,
+                    tire_rri = %s,
+                    tire_rro = %s,
+                    last_update = NOW()
+                WHERE truck_id = %s;
+            """, (
+                wh['engine'], wh['frame'], wh['hydraulic'],
+                wh['tire_fl'], wh['tire_fr'],
+                wh['tire_rli'], wh['tire_rlo'],
+                wh['tire_rri'], wh['tire_rro'],
+                truck.truck_id
+            ))
+            conn.commit()
             
             # Выводим инфу, чтобы видеть, как он едет по сегментам
             seg_info = f"Сегмент [{current_segment_idx}]" if "GOING" in truck.state else ""

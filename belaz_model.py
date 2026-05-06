@@ -37,6 +37,18 @@ class BelazSim:
         self.lat = 67.562
         self.lon = 33.412
         
+        # --- НАРАБОТКА УЗЛОВ (Моточасы) ---
+        # Храним всё в одном словаре для удобства
+        self.working_hours = {
+            'engine': initial_engine_hours,
+            'frame': 5000.0,      # Допустим, рама уже отходила 5000 часов
+            'hydraulic': 1000.0,
+            # Колеса (могут быть новыми или с разным пробегом после ротации)
+            'tire_fl': 0.0, 'tire_fr': 0.0,
+            'tire_rli': 0.0, 'tire_rlo': 0.0,
+            'tire_rri': 0.0, 'tire_rro': 0.0
+        }
+        
         # Давление в 6 колесах (Паскали)
         self.pressures = {
             'FL': self.base_pressure, 'FR': self.base_pressure,
@@ -55,46 +67,62 @@ class BelazSim:
         self.fuel_level = initial_fuel
         self.temp = 85.0 # Температура ДВС
         self.accumulated_iron = 15.0
-        self.total_engine_hours = initial_engine_hours
         self.loading_cycles_count = 0
         self.fuel_rate = 0.0
         self.voltage = 24.0
         self.cooling_level = initial_cool
         self.hydraulic_level = initial_hydraulic
 
+    def update_working_hours(self, dt_seconds):
+        """
+        Метод прибавляет время к наработке узлов.
+        Вызывается каждый шаг симуляции.
+        """
+        step_hours = dt_seconds / 3600.0  # Перевод секунд в часы
+        
+        # 1. Узлы, которые работают ВСЕГДА (пока заведена машина)
+        self.working_hours['engine'] += step_hours
+        self.working_hours['frame'] += step_hours
+        self.working_hours['hydraulic'] += step_hours
+
+        # 2. Узлы, которые работают ТОЛЬКО В ДВИЖЕНИИ (скорость > 0.5 км/ч)
+        if self.speed > 0.5:
+            # Обновляем наработку всех 6 шин
+            tire_keys = ['tire_fl', 'tire_fr', 'tire_rli', 'tire_rlo', 'tire_rri', 'tire_rro']
+            for tire in tire_keys:
+                self.working_hours[tire] += step_hours
+
     def update_sensors(self):
-        """
-        Расчет физики колес на основе динамической развесовки (данные со скриншота)
-        """
+        """ Расчет физики колес на основе динамической развесовки """
         total_mass = self.mass + self.payload
         load_factor = min(1.0, self.payload / self.lifting_cap)
 
-        # 1. ДИНАМИЧЕСКАЯ РАЗВЕСОВКА (Интерполяция данных со скриншота)
-        # Передняя ось: 50.9% (пустой) -> 33.0% (груженый)
-        # Задняя ось: 49.1% (пустой) -> 67.0% (груженый)
+        # 1. ДИНАМИЧЕСКАЯ РАЗВЕСОВКА
         front_ratio = 0.509 - (0.509 - 0.330) * load_factor
         rear_ratio = 0.491 + (0.670 - 0.491) * load_factor
 
-        # Нагрузка на ОДНО колесо (в тоннах)
         q_front_wheel = (total_mass * front_ratio) / 2.0 / 1000.0
         q_rear_wheel = (total_mass * rear_ratio) / 4.0 / 1000.0
 
         # 2. РАСЧЕТ ТЕМПЕРАТУРЫ (Формула 2.15 Горюнова)
-        # t = 30.1 + 0.6*t_cp + 0.078 * Q * V
         t_base_front = 30.1 + 0.6 * self.t_ambient + 0.078 * q_front_wheel * self.speed
         t_base_rear = 30.1 + 0.6 * self.t_ambient + 0.078 * q_rear_wheel * self.speed
 
-        # Обновляем все 6 колес с небольшим случайным шумом
         for key in self.temperatures:
             base_t = t_base_front if 'F' in key else t_base_rear
             self.temperatures[key] = base_t + random.uniform(-0.5, 0.5)
 
-        # 3. ИМИТАЦИЯ ДАВЛЕНИЯ (растет при нагреве + шум)
+        # 3. ИМИТАЦИЯ ДАВЛЕНИЯ
         for key in self.pressures:
-            thermal_expansion = (self.temperatures[key] - 25.0) * 1500.0 # Упрощенно
+            thermal_expansion = (self.temperatures[key] - 25.0) * 1500.0 
             self.pressures[key] = self.base_pressure + thermal_expansion + random.uniform(-500, 500)
 
     def calculate_physics(self, dt_seconds=2):
+        """ Главный метод расчета физики. """
+        
+        # === ВЫЗОВ ОБНОВЛЕНИЯ НАРАБОТКИ ===
+        self.update_working_hours(dt_seconds)
+        
         total_mass_ton = (self.mass + self.payload) / 1000.0
         step_hours = dt_seconds / 3600.0
         
@@ -112,7 +140,6 @@ class BelazSim:
         load_intensity = self.fuel_rate / 100.0
         iron_rate_per_hour = 0.05 * math.exp(1.2 * (load_intensity - 1))
         self.accumulated_iron += iron_rate_per_hour * step_hours
-        self.total_engine_hours += step_hours
         
         # Обновление бака и температуры ДВС
         self.fuel_level -= self.fuel_rate * step_hours
